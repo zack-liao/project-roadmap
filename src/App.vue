@@ -4,8 +4,9 @@ import { useProjects } from './composables/useProjects.js'
 import ProjectModal from './components/ProjectModal.vue'
 import Timeline from './components/Timeline.vue'
 import ProjectList from './components/ProjectList.vue'
+import Toolbar from './components/Toolbar.vue'
 
-const { projects, addProject, updateProject, removeProject } = useProjects()
+const { projects, addProject, updateProject, removeProject, exportJSON, importJSON } = useProjects()
 
 const modalOpen = ref(false)
 const editing = ref(null)
@@ -29,12 +30,24 @@ function handleSave(fields) {
 function schedule(id, patch) {
   updateProject(id, patch)
 }
+async function handleImport(file) {
+  try {
+    const count = await importJSON(file)
+    alert(`匯入成功：${count} 筆`)
+  } catch (err) {
+    alert(`匯入失敗：${err.message}`)
+  }
+}
 </script>
 
 <template>
   <header>
     <h1>Project Roadmap</h1>
-    <button @click="openAdd">+ 新增 Project</button>
+    <Toolbar
+      @add="openAdd"
+      @export="exportJSON"
+      @import="handleImport"
+    />
   </header>
 
   <div class="layout">
