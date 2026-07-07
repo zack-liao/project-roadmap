@@ -45,6 +45,7 @@ function nextFreeLane() {
     :projects="projects"
     @edit="openEdit"
     @remove="removeProject"
+    @update="updateProject"
   />
 
   <ProjectModal

@@ -1,16 +1,17 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { useElementSize } from '@vueuse/core'
+import { useElementSize, useElementBounding } from '@vueuse/core'
 import { MONTHS, MONTH_COUNT } from '../constants.js'
 import ProjectBar from './ProjectBar.vue'
 
 const props = defineProps({
   projects: { type: Array, required: true },
 })
-const emit = defineEmits(['edit', 'remove'])
+const emit = defineEmits(['edit', 'remove', 'update'])
 
 const trackEl = ref(null)
 const { width: trackWidth } = useElementSize(trackEl)
+const { left: trackLeft } = useElementBounding(trackEl)
 const monthWidth = computed(() => (trackWidth.value || 0) / MONTH_COUNT)
 
 // 只畫已排程（startMonth 非 null）的 project
@@ -46,8 +47,10 @@ defineExpose({ trackEl, monthWidth })
         :key="p.id"
         :project="p"
         :month-width="monthWidth"
+        :track-left="trackLeft"
         @edit="emit('edit', $event)"
         @remove="emit('remove', $event)"
+        @update="(id, patch) => emit('update', id, patch)"
       />
     </div>
   </div>
