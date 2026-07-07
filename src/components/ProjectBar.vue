@@ -17,7 +17,7 @@ const style = computed(() => ({
   background: props.project.color || '#4f7cff',
 }))
 
-const { onPointerdownMove, dragging } = useDragBar({
+const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dragging } = useDragBar({
   project: () => props.project,
   monthWidth: () => props.monthWidth,
   trackLeft: () => props.trackLeft,
@@ -33,8 +33,10 @@ const { onPointerdownMove, dragging } = useDragBar({
     @pointerdown="onPointerdownMove"
     @dblclick="emit('edit', project)"
   >
+    <div class="handle left" @pointerdown="onPointerdownResizeLeft" />
     <span class="label">{{ project.name }}</span>
     <button class="del" @click.stop="emit('remove', project.id)" @pointerdown.stop>✕</button>
+    <div class="handle right" @pointerdown="onPointerdownResizeRight" />
   </div>
 </template>
 
@@ -46,6 +48,12 @@ const { onPointerdownMove, dragging } = useDragBar({
   cursor: grab; user-select: none; touch-action: none;
 }
 .bar.dragging { cursor: grabbing; opacity: .85; }
+.handle {
+  position: absolute; top: 0; bottom: 0; width: 8px;
+  cursor: ew-resize; z-index: 2;
+}
+.handle.left { left: 0; }
+.handle.right { right: 0; }
 .label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .del { background: transparent; border: none; color: #fff; cursor: pointer; opacity: 0; }
 .bar:hover .del { opacity: 1; }
