@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useProjects } from './composables/useProjects.js'
 import ProjectModal from './components/ProjectModal.vue'
 import Timeline from './components/Timeline.vue'
+import ProjectList from './components/ProjectList.vue'
 
 const { projects, addProject, updateProject, removeProject } = useProjects()
 
@@ -21,17 +22,12 @@ function handleSave(fields) {
   if (editing.value) {
     updateProject(editing.value.id, fields)
   } else {
-    // 新增後直接排到第一格方便看到（暫時；Task 8 改成拖曳排程）
-    const p = addProject(fields)
-    updateProject(p.id, { startMonth: 0, lane: nextFreeLane() })
+    addProject(fields)  // 新增後留在「未排程」，等使用者拖進 timeline
   }
   modalOpen.value = false
 }
-function nextFreeLane() {
-  const used = projects.value.filter((p) => p.lane !== null).map((p) => p.lane)
-  let lane = 0
-  while (used.includes(lane)) lane++
-  return lane
+function schedule(id, patch) {
+  updateProject(id, patch)
 }
 </script>
 
@@ -41,12 +37,20 @@ function nextFreeLane() {
     <button @click="openAdd">+ 新增 Project</button>
   </header>
 
-  <Timeline
-    :projects="projects"
-    @edit="openEdit"
-    @remove="removeProject"
-    @update="updateProject"
-  />
+  <div class="layout">
+    <ProjectList
+      :projects="projects"
+      @edit="openEdit"
+      @remove="removeProject"
+    />
+    <Timeline
+      :projects="projects"
+      @edit="openEdit"
+      @remove="removeProject"
+      @update="updateProject"
+      @schedule="schedule"
+    />
+  </div>
 
   <ProjectModal
     :open="modalOpen"
@@ -58,4 +62,6 @@ function nextFreeLane() {
 
 <style scoped>
 header { display: flex; align-items: center; gap: 16px; font-family: system-ui, sans-serif; margin-bottom: 16px; }
+.layout { display: flex; gap: 16px; }
+.layout > :last-child { flex: 1; }
 </style>

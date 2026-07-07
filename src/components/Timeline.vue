@@ -2,12 +2,13 @@
 import { ref, computed } from 'vue'
 import { useElementSize, useElementBounding } from '@vueuse/core'
 import { MONTHS, MONTH_COUNT } from '../constants.js'
+import { pxToMonth } from '../composables/geometry.js'
 import ProjectBar from './ProjectBar.vue'
 
 const props = defineProps({
   projects: { type: Array, required: true },
 })
-const emit = defineEmits(['edit', 'remove', 'update'])
+const emit = defineEmits(['edit', 'remove', 'update', 'schedule'])
 
 const trackEl = ref(null)
 const { width: trackWidth } = useElementSize(trackEl)
@@ -23,6 +24,16 @@ const laneCount = computed(() =>
   Math.max(4, ...scheduled.value.map((p) => (p.lane ?? 0) + 1))
 )
 
+function onDrop(e) {
+  const id = e.dataTransfer.getData('text/plain')
+  if (!id) return
+  const startMonth = pxToMonth(e.clientX, trackLeft.value, monthWidth.value)
+  // 用滑鼠 y 相對 track 頂端算 lane（每列 44px）
+  const rect = trackEl.value.getBoundingClientRect()
+  const lane = Math.max(0, Math.floor((e.clientY - rect.top) / 44))
+  emit('schedule', id, { startMonth, lane })
+}
+
 defineExpose({ trackEl, monthWidth })
 </script>
 
@@ -35,6 +46,8 @@ defineExpose({ trackEl, monthWidth })
       ref="trackEl"
       class="track"
       :style="{ height: laneCount * 44 + 8 + 'px' }"
+      @dragover.prevent
+      @drop="onDrop"
     >
       <div
         v-for="i in MONTH_COUNT"
