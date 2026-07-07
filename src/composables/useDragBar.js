@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { pxToMonth, clampBar } from './geometry.js'
+import { MIN_DURATION } from '../constants.js'
 
 export function useDragBar({ project, monthWidth, trackLeft, onChange }) {
   const dragging = ref(false)
@@ -33,14 +34,14 @@ export function useDragBar({ project, monthWidth, trackLeft, onChange }) {
       const clamped = clampBar(mouseMonth - grabOffsetMonths, snap.duration)
       onChange({ startMonth: clamped.startMonth })
     } else if (mode === 'right') {
-      // 右緣跟滑鼠：duration = 滑鼠月 - 起始月 + 1
-      const duration = mouseMonth - snap.startMonth + 1
+      // 右緣跟滑鼠（邊界座標）：duration = 滑鼠位置 - 起始月
+      const duration = mouseMonth - snap.startMonth
       const clamped = clampBar(snap.startMonth, duration)
       onChange({ startMonth: clamped.startMonth, duration: clamped.duration })
     } else if (mode === 'left') {
       // 左緣跟滑鼠：右緣（end）固定，start 變、duration 反向變
-      const end = snap.startMonth + snap.duration  // exclusive
-      const newStart = Math.min(mouseMonth, end - 1)
+      const end = snap.startMonth + snap.duration
+      const newStart = Math.min(mouseMonth, end - MIN_DURATION)
       const clamped = clampBar(newStart, end - newStart)
       onChange({ startMonth: clamped.startMonth, duration: clamped.duration })
     }

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useElementSize, useElementBounding } from '@vueuse/core'
-import { MONTHS, MONTH_COUNT } from '../constants.js'
+import { MONTHS, MONTH_COUNT, SUBDIVISIONS } from '../constants.js'
 import { pxToMonth } from '../composables/geometry.js'
 import ProjectBar from './ProjectBar.vue'
 
@@ -27,7 +27,9 @@ const laneCount = computed(() =>
 function onDrop(e) {
   const id = e.dataTransfer.getData('text/plain')
   if (!id) return
-  const startMonth = pxToMonth(e.clientX, trackLeft.value, monthWidth.value)
+  // clamp：落點留至少 1 月空間，橫條不掉出右緣
+  const raw = pxToMonth(e.clientX, trackLeft.value, monthWidth.value)
+  const startMonth = Math.min(raw, MONTH_COUNT - 1)
   // 用滑鼠 y 相對 track 頂端算 lane（每列 44px）
   const rect = trackEl.value.getBoundingClientRect()
   const lane = Math.max(0, Math.floor((e.clientY - rect.top) / 44))
@@ -49,6 +51,12 @@ defineExpose({ trackEl, monthWidth })
       @dragover.prevent
       @drop="onDrop"
     >
+      <div
+        v-for="i in MONTH_COUNT * SUBDIVISIONS"
+        :key="'q' + i"
+        class="grid-line quarter"
+        :style="{ left: (i - 1) * monthWidth / SUBDIVISIONS + 'px' }"
+      />
       <div
         v-for="i in MONTH_COUNT"
         :key="i"
@@ -74,5 +82,6 @@ defineExpose({ trackEl, monthWidth })
 .header { display: flex; border-bottom: 2px solid #333; }
 .month-cell { flex: 1; text-align: center; padding: 6px 0; font-size: 13px; font-weight: 600; }
 .track { position: relative; background: #fafafa; }
-.grid-line { position: absolute; top: 0; bottom: 0; width: 1px; background: #e5e5e5; }
+.grid-line { position: absolute; top: 0; bottom: 0; width: 1px; background: #cfcfcf; }
+.grid-line.quarter { background: #efefef; }
 </style>
