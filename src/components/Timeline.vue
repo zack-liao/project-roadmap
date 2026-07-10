@@ -1,21 +1,34 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { useElementSize, useElementBounding } from '@vueuse/core'
-import { MONTHS, MONTH_COUNT, SUBDIVISIONS } from '../constants.js'
-import { pxToMonth } from '../composables/geometry.js'
+import { useElementBounding } from '@vueuse/core'
+import {
+  MONTH_COUNT, MONTH_WIDTH, SUBDIVISIONS, LANE_HEIGHT,
+  TIMELINE_START_YEAR, TIMELINE_START_MONTH,
+} from '../constants.js'
+import { pxToMonth, pxToLane } from '../composables/geometry.js'
+import { buildColumns, buildYearGroups, dateToOffset } from '../composables/calendar.js'
 import ProjectBar from './ProjectBar.vue'
 
 const props = defineProps({
   projects: { type: Array, required: true },
+  selectedId: { type: String, default: null },
 })
-const emit = defineEmits(['edit', 'remove', 'update', 'schedule'])
+const emit = defineEmits(['edit', 'remove', 'update', 'schedule', 'select'])
+
+// 固定月寬 → 內容總寬固定，超出容器就橫向捲動
+const monthWidth = MONTH_WIDTH
+const totalWidth = MONTH_COUNT * MONTH_WIDTH
+
+const columns = buildColumns(TIMELINE_START_YEAR, TIMELINE_START_MONTH, MONTH_COUNT)
+const yearGroups = buildYearGroups(columns)
+
+// 今日線位置（超出範圍則不顯示）
+const todayOffset = dateToOffset(new Date(), TIMELINE_START_YEAR, TIMELINE_START_MONTH)
+const showToday = todayOffset >= 0 && todayOffset <= MONTH_COUNT
 
 const trackEl = ref(null)
-const { width: trackWidth } = useElementSize(trackEl)
-const { left: trackLeft } = useElementBounding(trackEl)
-const monthWidth = computed(() => (trackWidth.value || 0) / MONTH_COUNT)
+const { left: trackLeft, top: trackTop } = useElementBounding(trackEl)
 
-// 只畫已排程（startMonth 非 null）的 project
 const scheduled = computed(() =>
   props.projects.filter((p) => p.startMonth !== null && p.lane !== null)
 )
@@ -27,12 +40,9 @@ const laneCount = computed(() =>
 function onDrop(e) {
   const id = e.dataTransfer.getData('text/plain')
   if (!id) return
-  // clamp：落點留至少 1 月空間，橫條不掉出右緣
-  const raw = pxToMonth(e.clientX, trackLeft.value, monthWidth.value)
+  const raw = pxToMonth(e.clientX, trackLeft.value, monthWidth)
   const startMonth = Math.min(raw, MONTH_COUNT - 1)
-  // 用滑鼠 y 相對 track 頂端算 lane（每列 44px）
-  const rect = trackEl.value.getBoundingClientRect()
-  const lane = Math.max(0, Math.floor((e.clientY - rect.top) / 44))
+  const lane = pxToLane(e.clientY, trackTop.value, LANE_HEIGHT)
   emit('schedule', id, { startMonth, lane })
 }
 
@@ -41,47 +51,107 @@ defineExpose({ trackEl, monthWidth })
 
 <template>
   <div class="timeline">
-    <div class="header">
-      <div v-for="m in MONTHS" :key="m" class="month-cell">{{ m }}</div>
-    </div>
-    <div
-      ref="trackEl"
-      class="track"
-      :style="{ height: laneCount * 44 + 8 + 'px' }"
-      @dragover.prevent
-      @drop="onDrop"
-    >
-      <div
-        v-for="i in MONTH_COUNT * SUBDIVISIONS"
-        :key="'q' + i"
-        class="grid-line quarter"
-        :style="{ left: (i - 1) * monthWidth / SUBDIVISIONS + 'px' }"
-      />
-      <div
-        v-for="i in MONTH_COUNT"
-        :key="i"
-        class="grid-line"
-        :style="{ left: (i - 1) * monthWidth + 'px' }"
-      />
-      <ProjectBar
-        v-for="p in scheduled"
-        :key="p.id"
-        :project="p"
-        :month-width="monthWidth"
-        :track-left="trackLeft"
-        @edit="emit('edit', $event)"
-        @remove="emit('remove', $event)"
-        @update="(id, patch) => emit('update', id, patch)"
-      />
+    <div class="scroll">
+      <div class="canvas" :style="{ width: totalWidth + 'px' }">
+        <!-- 上排：年份，跨越該年在範圍內的月數 -->
+        <div class="year-row">
+          <div
+            v-for="g in yearGroups"
+            :key="g.year"
+            class="year-cell"
+            :style="{ width: g.span * monthWidth + 'px' }"
+          >{{ g.year }}</div>
+        </div>
+
+        <!-- 下排：月份 -->
+        <div class="month-row">
+          <div
+            v-for="c in columns"
+            :key="c.index"
+            class="month-cell"
+            :class="{ 'year-start': c.isYearStart && c.index !== 0 }"
+            :style="{ width: monthWidth + 'px' }"
+          >{{ c.label }}</div>
+        </div>
+
+        <!-- 軌道 -->
+        <div
+          ref="trackEl"
+          class="track"
+          :style="{ height: laneCount * LANE_HEIGHT + 8 + 'px' }"
+          @dragover.prevent
+          @drop="onDrop"
+          @click.self="emit('select', null)"
+        >
+          <!-- 季度細格線 -->
+          <div
+            v-for="i in MONTH_COUNT * SUBDIVISIONS"
+            :key="'q' + i"
+            class="grid-line quarter"
+            :style="{ left: (i - 1) * monthWidth / SUBDIVISIONS + 'px' }"
+          />
+          <!-- 月格線（年首較粗） -->
+          <div
+            v-for="c in columns"
+            :key="'m' + c.index"
+            class="grid-line"
+            :class="{ 'year-line': c.isYearStart && c.index !== 0 }"
+            :style="{ left: c.index * monthWidth + 'px' }"
+          />
+          <!-- 今日線 -->
+          <div
+            v-if="showToday"
+            class="today-line"
+            :style="{ left: todayOffset * monthWidth + 'px' }"
+          />
+          <ProjectBar
+            v-for="p in scheduled"
+            :key="p.id"
+            :project="p"
+            :month-width="monthWidth"
+            :track-left="trackLeft"
+            :track-top="trackTop"
+            :selected="p.id === selectedId"
+            @edit="emit('edit', $event)"
+            @remove="emit('remove', $event)"
+            @update="(id, patch) => emit('update', id, patch)"
+            @select="emit('select', $event)"
+          />
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.timeline { font-family: system-ui, sans-serif; }
-.header { display: flex; border-bottom: 2px solid #333; }
-.month-cell { flex: 1; text-align: center; padding: 6px 0; font-size: 13px; font-weight: 600; }
-.track { position: relative; background: #fafafa; }
-.grid-line { position: absolute; top: 0; bottom: 0; width: 1px; background: #cfcfcf; }
-.grid-line.quarter { background: #efefef; }
+.timeline { font-family: var(--font-ui); }
+.scroll {
+  overflow-x: auto; overflow-y: hidden;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.canvas { position: relative; }
+
+.year-row { display: flex; }
+.year-cell {
+  box-sizing: border-box; padding: var(--sp-2) 0; text-align: center;
+  font-family: var(--font-mono);
+  font-size: 13px; font-weight: 600; letter-spacing: .04em; color: var(--muted);
+  background: var(--surface-2); border-left: 2px solid var(--border-strong);
+}
+.year-cell:first-child { border-left: none; }
+
+.month-row { display: flex; border-bottom: 2px solid var(--border-strong); }
+.month-cell {
+  box-sizing: border-box; padding: var(--sp-2) 0; text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px; font-weight: 550; color: var(--text);
+}
+.month-cell.year-start { border-left: 2px solid var(--border-strong); }
+
+.track { position: relative; background: var(--surface); }
+.grid-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); }
+.grid-line.quarter { background: var(--surface-2); }
+.grid-line.year-line { width: 2px; background: var(--border-strong); }
+.today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--today); z-index: 3; }
 </style>

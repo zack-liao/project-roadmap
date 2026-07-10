@@ -2,33 +2,38 @@
 import { computed } from 'vue'
 import { monthToPx, durationToPx } from '../composables/geometry.js'
 import { useDragBar } from '../composables/useDragBar.js'
+import { LANE_HEIGHT } from '../constants.js'
 
 const props = defineProps({
   project: { type: Object, required: true },
   monthWidth: { type: Number, required: true },
   trackLeft: { type: Number, required: true },
+  trackTop: { type: Number, required: true },
+  selected: { type: Boolean, default: false },
 })
-const emit = defineEmits(['edit', 'remove', 'update'])
+const emit = defineEmits(['edit', 'remove', 'update', 'select'])
 
 const style = computed(() => ({
   left: monthToPx(props.project.startMonth ?? 0, props.monthWidth) + 'px',
   width: durationToPx(props.project.duration, props.monthWidth) + 'px',
-  top: (props.project.lane ?? 0) * 44 + 'px',
-  background: props.project.color || '#4f7cff',
+  top: (props.project.lane ?? 0) * LANE_HEIGHT + 'px',
+  background: props.project.color || 'var(--accent)',
 }))
 
 const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dragging } = useDragBar({
   project: () => props.project,
   monthWidth: () => props.monthWidth,
   trackLeft: () => props.trackLeft,
+  trackTop: () => props.trackTop,
   onChange: (patch) => emit('update', props.project.id, patch),
+  onSelect: () => emit('select', props.project.id),
 })
 </script>
 
 <template>
   <div
     class="bar"
-    :class="{ dragging }"
+    :class="{ dragging, selected }"
     :style="style"
     @pointerdown="onPointerdownMove"
     @dblclick="emit('edit', project)"
@@ -48,6 +53,7 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
   cursor: grab; user-select: none; touch-action: none;
 }
 .bar.dragging { cursor: grabbing; opacity: .85; }
+.bar.selected { outline: 2px solid var(--text); outline-offset: 1px; box-shadow: 0 0 0 4px var(--accent-soft); }
 .handle {
   position: absolute; top: 0; bottom: 0; width: 8px;
   cursor: ew-resize; z-index: 2;

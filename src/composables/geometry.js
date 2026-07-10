@@ -25,3 +25,8 @@ export function clampBar(startMonth, duration) {
   }
   return { startMonth: start, duration: dur }
 }
+
+// 螢幕 y（相對整個視窗）→ lane 整數列，向下取整、clamp 下限 0（無上限，track 會自動長高）。
+export function pxToLane(y, trackTop, laneHeight) {
+  return Math.max(0, Math.floor((y - trackTop) / laneHeight))
+}
