@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue'
+import AppIcon from './AppIcon.vue'
 
 const emit = defineEmits(['add', 'export', 'import'])
 const fileInput = ref(null)
@@ -16,9 +17,15 @@ function onFile(e) {
 
 <template>
   <div class="toolbar">
-    <button class="primary" @click="emit('add')">+ 新增 Project</button>
-    <button @click="emit('export')">匯出 JSON</button>
-    <button @click="pickFile">匯入 JSON</button>
+    <button class="ghost" @click="pickFile">
+      <AppIcon name="upload" :size="15" />匯入
+    </button>
+    <button class="ghost" @click="emit('export')">
+      <AppIcon name="download" :size="15" />匯出
+    </button>
+    <button class="primary" @click="emit('add')">
+      <AppIcon name="plus" :size="15" />新增 Project
+    </button>
     <input
       ref="fileInput"
       type="file"
@@ -32,15 +39,28 @@ function onFile(e) {
 <style scoped>
 .toolbar { display: flex; gap: var(--sp-2); }
 button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: var(--sp-2) var(--sp-4);
-  font-size: 13px; font-weight: 550;
-  border: 1px solid var(--border-strong);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 550;
   border-radius: var(--radius-sm);
-  background: var(--surface); color: var(--text);
   cursor: pointer;
-  transition: background .12s, border-color .12s;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-button:hover { background: var(--surface-2); }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-button.primary:hover { background: #2f5ede; }
+.ghost {
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--muted);
+}
+.ghost:hover { background: var(--surface-2); color: var(--text); }
+.primary {
+  border: 1px solid var(--accent-strong);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.primary:hover { background: var(--accent-strong); }
 </style>

@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from 'vue'
+import AppIcon from './AppIcon.vue'
 
 const props = defineProps({
   projects: { type: Array, required: true },
@@ -32,21 +33,31 @@ function onDragStart(e, id) {
         @dragstart="onDragStart($event, p.id)"
         @dblclick="emit('edit', p)"
       >
+        <span class="grip"><AppIcon name="grip" :size="15" /></span>
         <div class="card-main">
           <span class="name">{{ p.name }}</span>
           <span v-if="p.owner" class="owner">{{ p.owner }}</span>
         </div>
-        <button class="del" title="刪除" @click.stop="emit('remove', p.id)">✕</button>
+        <div class="acts">
+          <button class="act" title="編輯" aria-label="編輯" @click.stop="emit('edit', p)">
+            <AppIcon name="pencil" :size="13" />
+          </button>
+          <button class="act del" title="刪除" aria-label="刪除" @click.stop="emit('remove', p.id)">
+            <AppIcon name="trash" :size="13" />
+          </button>
+        </div>
       </div>
+      <p class="foot">拖曳卡片到時間軸排程；雙擊卡片編輯</p>
     </div>
 
     <div v-else class="empty">
+      <span class="empty-icon"><AppIcon name="calendar" :size="22" /></span>
       <p class="empty-title">沒有待排程的 Project</p>
       <p class="empty-hint">新增後拖曳到右側時間軸即可安排時程</p>
-      <button class="add" @click="emit('add')">+ 新增 Project</button>
+      <button class="add" @click="emit('add')">
+        <AppIcon name="plus" :size="14" />新增 Project
+      </button>
     </div>
-
-    <p v-if="unscheduled.length" class="foot">拖曳卡片到時間軸排程</p>
   </aside>
 </template>
 
@@ -68,55 +79,79 @@ function onDragStart(e, id) {
   padding: var(--sp-4) var(--sp-4) var(--sp-3);
   border-bottom: 1px solid var(--border);
 }
-.title { font-size: 13px; font-weight: 650; letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
+.title {
+  font-family: var(--font-display);
+  font-size: 13px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted);
+}
 .count {
   font-family: var(--font-mono);
   font-size: 12px;
   min-width: 22px; height: 22px; padding: 0 6px;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--surface-2); border-radius: 999px; color: var(--text);
+  background: var(--accent-soft); border-radius: 999px; color: var(--accent);
 }
 
-.items { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
+.items {
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: var(--sp-3);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+}
 .card {
   display: flex; align-items: center; gap: var(--sp-2);
-  padding: var(--sp-3);
-  background: var(--surface);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-1);
+  background: var(--surface-2);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
   border-radius: var(--radius-sm);
   cursor: grab;
-  transition: box-shadow .12s, border-color .12s, transform .12s;
+  transition: border-color var(--dur) var(--ease), transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
-.card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
-.card:active { cursor: grabbing; }
-.card-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.name { font-size: 14px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card:hover { border-color: var(--border-strong); box-shadow: var(--shadow); transform: translateY(-1px); }
+.card:active { cursor: grabbing; transform: none; }
+.grip { flex: none; display: inline-flex; color: var(--faint); }
+.card-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.name { font-size: 13.5px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .owner { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.del {
-  flex: none; width: 24px; height: 24px; border: none; border-radius: var(--radius-sm);
-  background: transparent; color: var(--muted); cursor: pointer; opacity: 0;
-  transition: opacity .12s, background .12s, color .12s;
+
+.acts { flex: none; display: flex; gap: 2px; }
+.act {
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: var(--radius-xs);
+  background: transparent; color: var(--faint); cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.card:hover .del { opacity: 1; }
-.del:hover { background: var(--surface-2); color: var(--danger); }
+.card:hover .act, .card:focus-within .act, .act:focus-visible { opacity: 1; }
+.act:hover { background: var(--surface-3); color: var(--text); }
+.act.del:hover { background: var(--danger-soft); color: var(--danger); }
 
 .empty {
   flex: 1; min-height: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: var(--sp-2); padding: var(--sp-5); text-align: center;
 }
+.empty-icon {
+  display: inline-flex; padding: var(--sp-3);
+  border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  margin-bottom: var(--sp-1);
+}
 .empty-title { margin: 0; font-size: 14px; font-weight: 600; color: var(--text); }
 .empty-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); max-width: 200px; }
 .add {
-  margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-4);
-  border: 1px solid var(--accent); border-radius: var(--radius-sm);
-  background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; cursor: pointer;
+  margin-top: var(--sp-3);
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid var(--accent-border); border-radius: var(--radius-sm);
+  background: var(--accent-soft); color: var(--accent);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.add:hover { background: var(--accent); color: #fff; }
+.add:hover { background: var(--accent); color: var(--accent-ink); }
 
 .foot {
-  flex: none; margin: 0; padding: var(--sp-3) var(--sp-4);
-  font-size: 11px; color: var(--muted); border-top: 1px solid var(--border);
+  margin: auto 0 0; padding-top: var(--sp-3);
+  font-size: 11px; line-height: 1.5; color: var(--faint);
 }
 </style>

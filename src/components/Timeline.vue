@@ -23,8 +23,10 @@ const columns = buildColumns(TIMELINE_START_YEAR, TIMELINE_START_MONTH, MONTH_CO
 const yearGroups = buildYearGroups(columns)
 
 // 今日線位置（超出範圍則不顯示）
-const todayOffset = dateToOffset(new Date(), TIMELINE_START_YEAR, TIMELINE_START_MONTH)
+const today = new Date()
+const todayOffset = dateToOffset(today, TIMELINE_START_YEAR, TIMELINE_START_MONTH)
 const showToday = todayOffset >= 0 && todayOffset <= MONTH_COUNT
+const todayLabel = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`
 
 const trackEl = ref(null)
 const { left: trackLeft, top: trackTop } = useElementBounding(trackEl)
@@ -37,7 +39,11 @@ const laneCount = computed(() =>
   Math.max(4, ...scheduled.value.map((p) => (p.lane ?? 0) + 1))
 )
 
+// 從側欄拖入時高亮軌道，提示可放置
+const dropActive = ref(false)
+
 function onDrop(e) {
+  dropActive.value = false
   const id = e.dataTransfer.getData('text/plain')
   if (!id) return
   const raw = pxToMonth(e.clientX, trackLeft.value, monthWidth)
@@ -78,8 +84,10 @@ defineExpose({ trackEl, monthWidth })
         <div
           ref="trackEl"
           class="track"
+          :class="{ 'drop-active': dropActive }"
           :style="{ height: laneCount * LANE_HEIGHT + 8 + 'px' }"
-          @dragover.prevent
+          @dragover.prevent="dropActive = true"
+          @dragleave.self="dropActive = false"
           @drop="onDrop"
           @click.self="emit('select', null)"
         >
@@ -98,12 +106,19 @@ defineExpose({ trackEl, monthWidth })
             :class="{ 'year-line': c.isYearStart && c.index !== 0 }"
             :style="{ left: c.index * monthWidth + 'px' }"
           />
-          <!-- 今日線 -->
+          <!-- 今日線 + 日期 beacon -->
           <div
             v-if="showToday"
             class="today-line"
             :style="{ left: todayOffset * monthWidth + 'px' }"
-          />
+          >
+            <span class="today-chip">{{ todayLabel }}</span>
+          </div>
+
+          <p v-if="!scheduled.length" class="track-empty">
+            從左側把 Project 拖到這裡開始排程
+          </p>
+
           <ProjectBar
             v-for="p in scheduled"
             :key="p.id"
@@ -136,22 +151,50 @@ defineExpose({ trackEl, monthWidth })
 .year-cell {
   box-sizing: border-box; padding: var(--sp-2) 0; text-align: center;
   font-family: var(--font-mono);
-  font-size: 13px; font-weight: 600; letter-spacing: .04em; color: var(--muted);
+  font-size: 12px; font-weight: 600; letter-spacing: .08em; color: var(--muted);
   background: var(--surface-2); border-left: 2px solid var(--border-strong);
 }
 .year-cell:first-child { border-left: none; }
 
-.month-row { display: flex; border-bottom: 2px solid var(--border-strong); }
+.month-row { display: flex; border-bottom: 1px solid var(--border-strong); }
 .month-cell {
   box-sizing: border-box; padding: var(--sp-2) 0; text-align: center;
   font-family: var(--font-mono);
-  font-size: 12px; font-weight: 550; color: var(--text);
+  font-size: 11px; font-weight: 500; letter-spacing: .04em; color: var(--faint);
 }
 .month-cell.year-start { border-left: 2px solid var(--border-strong); }
 
-.track { position: relative; background: var(--surface); }
+.track {
+  position: relative;
+  background: var(--surface);
+  transition: background var(--dur) var(--ease);
+}
+.track.drop-active { background: var(--accent-soft); }
+
 .grid-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); }
-.grid-line.quarter { background: var(--surface-2); }
+.grid-line.quarter { background: color-mix(in srgb, var(--border) 40%, transparent); }
 .grid-line.year-line { width: 2px; background: var(--border-strong); }
-.today-line { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--today); z-index: 3; }
+
+.today-line {
+  position: absolute; top: 0; bottom: 0; width: 2px;
+  background: var(--today); z-index: 6;
+  pointer-events: none;   /* 不擋橫條拖曳 */
+}
+.today-chip {
+  position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--today); color: #451a03;
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .03em;
+  white-space: nowrap;
+  box-shadow: 0 0 10px var(--today-soft);
+}
+
+.track-empty {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0; color: var(--faint); font-size: 13px;
+  pointer-events: none;
+}
 </style>

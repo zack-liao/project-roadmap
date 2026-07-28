@@ -1,5 +1,6 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, nextTick } from 'vue'
+import AppIcon from './AppIcon.vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -8,13 +9,16 @@ const props = defineProps({
 const emit = defineEmits(['save', 'close'])
 
 const form = ref({ name: '', summary: '', owner: '', stakeholder: '' })
+const nameInput = ref(null)
 
-// 每次開啟時，用傳入的 project 填表（編輯）或清空（新增）
-watch(() => props.open, (isOpen) => {
+// 每次開啟時，用傳入的 project 填表（編輯）或清空（新增），並聚焦名稱欄
+watch(() => props.open, async (isOpen) => {
   if (isOpen) {
     form.value = props.project
       ? { name: props.project.name, summary: props.project.summary, owner: props.project.owner, stakeholder: props.project.stakeholder }
       : { name: '', summary: '', owner: '', stakeholder: '' }
+    await nextTick()
+    nameInput.value?.focus()
   }
 })
 
@@ -25,51 +29,121 @@ function submit() {
 </script>
 
 <template>
-  <div v-if="open" class="backdrop" @click.self="emit('close')">
-    <div class="modal">
-      <h2>{{ project ? '編輯 Project' : '新增 Project' }}</h2>
-      <label>名稱<input v-model="form.name" /></label>
-      <label>簡介<textarea v-model="form.summary" /></label>
-      <label>負責人<input v-model="form.owner" /></label>
-      <label>核心利益人<input v-model="form.stakeholder" /></label>
-      <div class="actions">
-        <button @click="emit('close')">取消</button>
-        <button @click="submit">儲存</button>
-      </div>
+  <Transition name="modal">
+    <div
+      v-if="open"
+      class="backdrop"
+      @click.self="emit('close')"
+      @keydown.esc="emit('close')"
+    >
+      <dialog class="modal" open>
+        <div class="modal-head">
+          <h2>{{ project ? '編輯 Project' : '新增 Project' }}</h2>
+          <button class="close" title="關閉" aria-label="關閉" @click="emit('close')">
+            <AppIcon name="x" :size="15" />
+          </button>
+        </div>
+
+        <form @submit.prevent="submit">
+          <label>
+            <span>名稱 <em class="req" title="必填">*</em></span>
+            <input ref="nameInput" v-model="form.name" required />
+          </label>
+          <label>
+            <span>簡介</span>
+            <textarea v-model="form.summary" />
+          </label>
+          <label>
+            <span>負責人</span>
+            <input v-model="form.owner" />
+          </label>
+          <label>
+            <span>核心利益人</span>
+            <input v-model="form.stakeholder" />
+          </label>
+          <div class="actions">
+            <button type="button" class="ghost" @click="emit('close')">取消</button>
+            <button type="submit" class="primary" :disabled="!form.name.trim()">儲存</button>
+          </div>
+        </form>
+      </dialog>
     </div>
-  </div>
+  </Transition>
 </template>
 
 <style scoped>
 .backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,.55);
+  position: fixed; inset: 0;
+  background: rgba(2, 6, 23, .66);
+  backdrop-filter: blur(2px);
   display: flex; align-items: center; justify-content: center;
   padding: var(--sp-4);
+  z-index: 40;
 }
 .modal {
+  position: static; margin: 0;
   background: var(--surface); color: var(--text);
   padding: var(--sp-5); border-radius: var(--radius);
-  border: 1px solid var(--border); box-shadow: var(--shadow);
-  display: flex; flex-direction: column; gap: var(--sp-3);
-  width: 360px; max-width: 100%;
+  border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg);
+  width: 380px; max-width: 100%;
   font-family: var(--font-ui);
 }
-.modal h2 { margin: 0 0 var(--sp-1); font-size: 16px; font-weight: 650; }
+
+.modal-enter-active, .modal-leave-active { transition: opacity var(--dur) var(--ease); }
+.modal-enter-active .modal, .modal-leave-active .modal { transition: transform var(--dur) var(--ease); }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
+.modal-enter-from .modal, .modal-leave-to .modal { transform: translateY(8px) scale(.98); }
+
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: var(--sp-4);
+}
+.modal h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px; font-weight: 600;
+}
+.close {
+  width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: var(--radius-xs);
+  background: transparent; color: var(--muted); cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.close:hover { background: var(--surface-2); color: var(--text); }
+
+form { display: flex; flex-direction: column; gap: var(--sp-3); }
 label { display: flex; flex-direction: column; gap: var(--sp-1); font-size: 13px; color: var(--muted); }
+.req { font-style: normal; color: var(--danger); }
 input, textarea {
-  padding: var(--sp-2); font: inherit; color: var(--text);
+  padding: var(--sp-2) var(--sp-3); font: inherit; color: var(--text);
   background: var(--surface-2); border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  transition: border-color var(--dur) var(--ease);
 }
-input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
-textarea { min-height: 64px; resize: vertical; }
+input:hover, textarea:hover { border-color: var(--border-strong); }
+input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+textarea { min-height: 72px; resize: vertical; }
+
 .actions { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-2); }
-button {
-  padding: var(--sp-2) var(--sp-4); font: inherit; font-weight: 550;
-  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
-  background: var(--surface); color: var(--text); cursor: pointer;
+.actions button {
+  padding: var(--sp-2) var(--sp-4); font: inherit; font-size: 13px; font-weight: 550;
+  border-radius: var(--radius-sm); cursor: pointer;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-button:hover { background: var(--surface-2); }
-.actions button:last-child { background: var(--accent); border-color: var(--accent); color: #fff; }
-.actions button:last-child:hover { background: #2f5ede; }
+.ghost {
+  border: 1px solid var(--border-strong);
+  background: transparent; color: var(--muted);
+}
+.ghost:hover { background: var(--surface-2); color: var(--text); }
+.primary {
+  border: 1px solid var(--accent-strong);
+  background: var(--accent); color: var(--accent-ink); font-weight: 600;
+}
+.primary:hover:not(:disabled) { background: var(--accent-strong); }
+.primary:disabled { opacity: .45; cursor: not-allowed; }
 </style>
