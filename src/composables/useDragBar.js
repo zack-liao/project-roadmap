@@ -5,13 +5,14 @@ import { MIN_DURATION } from '../constants.js'
 
 const CLICK_THRESHOLD = 4  // 位移小於此像素視為點擊，而非拖曳
 
-export function useDragBar({ project, monthWidth, trackLeft, resolveLane, onChange, onSelect }) {
+export function useDragBar({ project, monthWidth, trackLeft, makeLaneResolver, onChange, onSelect }) {
   const dragging = ref(false)
   let mode = null            // 'move' | 'left' | 'right'
   let grabOffsetMonths = 0
   let startSnapshot = null   // { startMonth, duration } 拖曳起始快照
   let downX = 0, downY = 0   // 按下座標，用來判斷是否為點擊
   let moved = false          // 本次是否真的拖動過
+  let laneResolver = null    // 拖曳起點的帶佈局快照 resolver（見 makeLaneResolver）
 
   function begin(m, e) {
     e.preventDefault()
@@ -23,6 +24,7 @@ export function useDragBar({ project, monthWidth, trackLeft, resolveLane, onChan
     downY = e.clientY
     const p = project()
     startSnapshot = { startMonth: p.startMonth, duration: p.duration }
+    laneResolver = makeLaneResolver()
     const mouseMonth = pxToMonth(e.clientX, trackLeft(), monthWidth())
     grabOffsetMonths = mouseMonth - p.startMonth
     e.target.setPointerCapture?.(e.pointerId)
@@ -42,7 +44,7 @@ export function useDragBar({ project, monthWidth, trackLeft, resolveLane, onChan
 
     if (mode === 'move') {
       const clamped = clampBar(mouseMonth - grabOffsetMonths, snap.duration)
-      const { categoryId, lane } = resolveLane(e.clientY)
+      const { categoryId, lane } = laneResolver(e.clientY)
       onChange({ startMonth: clamped.startMonth, lane, categoryId })
     } else if (mode === 'right') {
       // 右緣跟滑鼠（邊界座標）：duration = 滑鼠位置 - 起始月

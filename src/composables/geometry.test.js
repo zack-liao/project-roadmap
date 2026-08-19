@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { pxToMonth, monthToPx, durationToPx, clampBar, pxToLane } from './geometry.js'
+import { pxToMonth, monthToPx, durationToPx, clampBar, pxToLane, resolveBandLane } from './geometry.js'
 import { MONTH_COUNT } from '../constants.js'
 
 describe('pxToMonth', () => {
@@ -61,5 +61,37 @@ describe('pxToLane', () => {
 
   it('clamps below lane 0 (no upper clamp, track grows instead)', () => {
     expect(pxToLane(-500, 0, 44)).toBe(0)
+  })
+})
+
+describe('resolveBandLane', () => {
+  const bands = [
+    { id: 'c1', top: 0, height: 96, laneCount: 2 },
+    { id: 'c2', top: 96, height: 96, laneCount: 2 },
+    { id: null, top: 192, height: 96, laneCount: 2 },
+  ]
+
+  it('maps y inside first band to its lanes', () => {
+    expect(resolveBandLane(bands, 10, 44)).toEqual({ categoryId: 'c1', lane: 0 })
+    expect(resolveBandLane(bands, 50, 44)).toEqual({ categoryId: 'c1', lane: 1 })
+  })
+
+  it('maps y inside a lower band (drag downward crosses band boundary)', () => {
+    expect(resolveBandLane(bands, 100, 44)).toEqual({ categoryId: 'c2', lane: 0 })
+    expect(resolveBandLane(bands, 150, 44)).toEqual({ categoryId: 'c2', lane: 1 })
+    expect(resolveBandLane(bands, 200, 44)).toEqual({ categoryId: null, lane: 0 })
+  })
+
+  it('clamps above the track to the first band lane 0', () => {
+    expect(resolveBandLane(bands, -50, 44)).toEqual({ categoryId: 'c1', lane: 0 })
+  })
+
+  it('clamps below the track to the last band, allowing one new lane', () => {
+    expect(resolveBandLane(bands, 500, 44)).toEqual({ categoryId: null, lane: 2 })
+  })
+
+  it('band bottom padding maps to a new lane within that band', () => {
+    // c1 高 96 = 2 lane * 44 + 8 padding；y=92 落在 padding → lane 2（帶內新列）
+    expect(resolveBandLane(bands, 92, 44)).toEqual({ categoryId: 'c1', lane: 2 })
   })
 })

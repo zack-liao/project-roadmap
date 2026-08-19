@@ -10,7 +10,7 @@ const props = defineProps({
   monthWidth: { type: Number, required: true },
   trackLeft: { type: Number, required: true },
   bandTop: { type: Number, default: 0 },
-  resolveLane: { type: Function, required: true },
+  makeLaneResolver: { type: Function, required: true },
   selected: { type: Boolean, default: false },
 })
 const emit = defineEmits(['edit', 'remove', 'update', 'select'])
@@ -49,7 +49,7 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
   project: () => props.project,
   monthWidth: () => props.monthWidth,
   trackLeft: () => props.trackLeft,
-  resolveLane: props.resolveLane,
+  makeLaneResolver: props.makeLaneResolver,
   onChange: (patch) => emit('update', props.project.id, patch),
   onSelect: () => emit('select', props.project.id),
 })

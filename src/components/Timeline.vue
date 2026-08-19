@@ -5,7 +5,7 @@ import {
   MONTH_COUNT, SUBDIVISIONS, LANE_HEIGHT,
   TIMELINE_START_YEAR, TIMELINE_START_MONTH,
 } from '../constants.js'
-import { pxToMonth } from '../composables/geometry.js'
+import { pxToMonth, resolveBandLane } from '../composables/geometry.js'
 import { useTimelineZoom } from '../composables/useTimelineZoom.js'
 import { buildColumns, buildYearGroups, dateToOffset } from '../composables/calendar.js'
 import ProjectBar from './ProjectBar.vue'
@@ -110,18 +110,14 @@ const bands = computed(() => {
 })
 const trackHeight = computed(() => bands.value.reduce((s, b) => s + b.height, 0))
 
-// 視窗 y 座標 → 落在哪個帶的哪個列。lane 可到 laneCount（帶尾新增一列）。
-function resolveLane(clientY) {
-  const y = clientY - trackTop.value
-  let acc = 0
-  for (const b of bands.value) {
-    if (y < acc + b.height || b === bands.value[bands.value.length - 1]) {
-      const lane = Math.max(0, Math.min(b.laneCount, Math.floor((y - acc) / LANE_HEIGHT)))
-      return { categoryId: b.id, lane }
-    }
-    acc += b.height
-  }
-  return { categoryId: null, lane: 0 }
+// 回傳「以當下帶佈局快照」解析 y 的 resolver。
+// 拖曳開始時呼叫一次，整段拖曳沿用同一快照 —— 不能用 live 佈局，
+// 否則 lane 增加使帶長高、帶底追著游標跑，往下拖永遠出不了帶。
+function makeLaneResolver() {
+  const snap = bands.value.map((b) => ({
+    id: b.id, top: b.top, height: b.height, laneCount: b.laneCount,
+  }))
+  return (clientY) => resolveBandLane(snap, clientY - trackTop.value, LANE_HEIGHT)
 }
 
 // 從側欄拖入時高亮軌道，提示可放置
@@ -133,7 +129,7 @@ function onDrop(e) {
   if (!id) return
   const raw = pxToMonth(e.clientX, trackLeft.value, monthWidth.value)
   const startMonth = Math.min(raw, MONTH_COUNT - 1)
-  const { categoryId, lane } = resolveLane(e.clientY)
+  const { categoryId, lane } = makeLaneResolver()(e.clientY)
   emit('schedule', id, { startMonth, lane, categoryId })
 }
 
@@ -254,7 +250,7 @@ defineExpose({ trackEl, monthWidth })
               :month-width="monthWidth"
               :track-left="trackLeft"
               :band-top="b.top"
-              :resolve-lane="resolveLane"
+              :make-lane-resolver="makeLaneResolver"
               :selected="p.id === selectedId"
               @edit="emit('edit', $event)"
               @remove="emit('remove', $event)"
