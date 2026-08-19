@@ -10,6 +10,7 @@ const props = defineProps({
   monthWidth: { type: Number, required: true },
   trackLeft: { type: Number, required: true },
   trackTop: { type: Number, required: true },
+  gapPx: { type: Number, default: Number.POSITIVE_INFINITY },
   selected: { type: Boolean, default: false },
 })
 const emit = defineEmits(['edit', 'remove', 'update', 'select'])
@@ -25,9 +26,26 @@ const style = computed(() => ({
 
 const durationLabel = computed(() => `${props.project.duration}mo`)
 
-// 橫條太窄放不下名稱時，名稱浮到條外右側（標準 Gantt 做法）
-const NARROW_PX = 140
-const isNarrow = computed(() => durationToPx(props.project.duration, props.monthWidth) < NARROW_PX)
+// 名稱實際像素寬放不進條內時，整個名稱浮到條外右側（標準 Gantt 做法），
+// 永不截斷成省略號。CHROME_PX 為條內名稱以外的固定佔位（padding、把手、時長徽章、刪除鈕）。
+const CHROME_PX = 96
+const measureCtx = document.createElement('canvas').getContext('2d')
+let labelFont = null
+function nameWidth(text) {
+  if (!labelFont) {
+    const fam = getComputedStyle(document.documentElement).getPropertyValue('--font-ui').trim() || 'sans-serif'
+    labelFont = `550 12.5px ${fam}`
+  }
+  measureCtx.font = labelFont
+  return measureCtx.measureText(text).width
+}
+const fitsInside = computed(() =>
+  durationToPx(props.project.duration, props.monthWidth) >= nameWidth(props.project.name) + CHROME_PX
+)
+// 條外要留 18px 邊距，且不可壓到同 lane 右鄰的 bar；空隙不夠就退回條內截斷 + tooltip
+const isNarrow = computed(() =>
+  !fitsInside.value && props.gapPx >= nameWidth(props.project.name) + 18
+)
 
 const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dragging } = useDragBar({
   project: () => props.project,
@@ -118,12 +136,11 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
   cursor: inherit;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.bar.narrow { padding: 0 4px; }
+.bar.narrow { padding: 0 4px; z-index: 2; }
 .label-out {
   position: absolute; left: calc(100% + 6px); top: 50%;
   transform: translateY(-50%);
-  max-width: 180px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px; font-weight: 550; color: var(--text);
   padding: 1px 6px; border-radius: var(--radius-xs);
   background: color-mix(in srgb, var(--surface) 82%, transparent);

@@ -90,6 +90,27 @@ const scheduled = computed(() =>
   props.projects.filter((p) => p.startMonth !== null && p.lane !== null)
 )
 
+// 每條 bar 右側到同 lane 下一條 bar 的空隙（px）。
+// ProjectBar 用它決定名稱能否浮到條外而不壓到鄰條。
+const gapById = computed(() => {
+  const byLane = new Map()
+  for (const p of scheduled.value) {
+    if (!byLane.has(p.lane)) byLane.set(p.lane, [])
+    byLane.get(p.lane).push(p)
+  }
+  const map = {}
+  for (const list of byLane.values()) {
+    list.sort((a, b) => a.startMonth - b.startMonth)
+    list.forEach((p, i) => {
+      const next = list[i + 1]
+      map[p.id] = next
+        ? Math.max(0, (next.startMonth - (p.startMonth + p.duration)) * monthWidth.value)
+        : Number.POSITIVE_INFINITY
+    })
+  }
+  return map
+})
+
 const laneCount = computed(() =>
   Math.max(4, ...scheduled.value.map((p) => (p.lane ?? 0) + 1))
 )
@@ -203,6 +224,7 @@ defineExpose({ trackEl, monthWidth })
             :month-width="monthWidth"
             :track-left="trackLeft"
             :track-top="trackTop"
+            :gap-px="gapById[p.id]"
             :selected="p.id === selectedId"
             @edit="emit('edit', $event)"
             @remove="emit('remove', $event)"
