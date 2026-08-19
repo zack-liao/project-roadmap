@@ -44,9 +44,14 @@ function nameWidth(text) {
 const fitsInside = computed(() =>
   durationToPx(props.project.duration, props.monthWidth) >= nameWidth(props.project.name) + CHROME_PX
 )
-// 條外要留 18px 邊距；夠放才浮出
+// 名稱從條內起始、溢出條尾：條寬 + 同列空隙 裝得下（含左 padding 與右緣 18px 邊距）才溢出
 const isBeside = computed(() =>
-  !fitsInside.value && props.gapPx >= nameWidth(props.project.name) + 18
+  !fitsInside.value &&
+  12 + nameWidth(props.project.name) + 18 <= durationToPx(props.project.duration, props.monthWidth) + props.gapPx
+)
+// 假性延伸條寬度：名稱溢出實條的部分（含左 padding 與尾端餘裕）
+const ghostPx = computed(() =>
+  Math.max(0, 12 + nameWidth(props.project.name) + 14 - durationToPx(props.project.duration, props.monthWidth))
 )
 // 名稱被截斷（條內外都放不下）→ hover 顯示自製 tooltip（原生 title 太小）
 const isTruncated = computed(() => !fitsInside.value && !isBeside.value)
@@ -71,9 +76,9 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
   >
     <span v-if="isTruncated" class="tip" role="tooltip">{{ project.name }}</span>
     <div class="handle left" @pointerdown="onPointerdownResizeLeft"><i /></div>
-    <button v-if="!isBeside" class="label" @click="emit('select', project.id)">{{ project.name }}</button>
+    <span v-if="isBeside" class="ghost" :style="{ width: ghostPx + 'px' }" />
+    <button class="label" @click="emit('select', project.id)">{{ project.name }}</button>
     <span v-if="!isBeside && !isTruncated" class="dur">{{ durationLabel }}</span>
-    <span v-if="isBeside" class="label-out">{{ project.name }}</span>
     <button
       class="del"
       title="刪除"
@@ -155,14 +160,21 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
   cursor: inherit;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.bar.beside { padding: 0 4px; z-index: 2; }
-.label-out {
-  position: absolute; left: calc(100% + 6px); top: 50%;
-  transform: translateY(-50%);
-  white-space: nowrap;
-  font-size: 12px; font-weight: 550; color: var(--text);
-  padding: 1px 6px; border-radius: var(--radius-xs);
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
+/* 溢出模式：名稱從條內起始、越過條尾繼續畫，不截斷。
+   底下鋪「假性延伸條」（極淡色 + 虛線框）讓名稱與實條讀成一體，
+   但時程判讀仍以實條（實心）為準；刪除鈕藏起（可從詳情面板刪）。 */
+.bar.beside { z-index: 2; }
+.bar.beside .label {
+  flex: none; max-width: none; overflow: visible;
+  position: relative; z-index: 1;
+}
+.bar.beside .del { display: none; }
+.ghost {
+  position: absolute; left: calc(100% + 1px); top: -1px; bottom: -1px;
+  background: color-mix(in srgb, var(--bar-color) 8%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--bar-color) 35%, transparent);
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   pointer-events: none;
 }
 
