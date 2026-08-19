@@ -110,6 +110,28 @@ const bands = computed(() => {
 })
 const trackHeight = computed(() => bands.value.reduce((s, b) => s + b.height, 0))
 
+// 每條 bar 右側到「同帶同列」下一條 bar 的空隙（px）。
+// ProjectBar 用它決定名稱能否浮到條外而不壓到鄰條。
+const gapById = computed(() => {
+  const rows = new Map()
+  for (const p of scheduled.value) {
+    const key = `${p.categoryId ?? ''}#${p.lane}`
+    if (!rows.has(key)) rows.set(key, [])
+    rows.get(key).push(p)
+  }
+  const map = {}
+  for (const list of rows.values()) {
+    list.sort((a, b) => a.startMonth - b.startMonth)
+    list.forEach((p, i) => {
+      const next = list[i + 1]
+      map[p.id] = next
+        ? Math.max(0, (next.startMonth - (p.startMonth + p.duration)) * monthWidth.value)
+        : Number.POSITIVE_INFINITY
+    })
+  }
+  return map
+})
+
 // 回傳「以當下帶佈局快照」解析 y 的 resolver。
 // 拖曳開始時呼叫一次，整段拖曳沿用同一快照 —— 不能用 live 佈局，
 // 否則 lane 增加使帶長高、帶底追著游標跑，往下拖永遠出不了帶。
@@ -250,6 +272,7 @@ defineExpose({ trackEl, monthWidth })
               :month-width="monthWidth"
               :track-left="trackLeft"
               :band-top="b.top"
+              :gap-px="gapById[p.id]"
               :make-lane-resolver="makeLaneResolver"
               :selected="p.id === selectedId"
               @edit="emit('edit', $event)"
