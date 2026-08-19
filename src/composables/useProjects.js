@@ -1,5 +1,27 @@
 import { ref, watch } from 'vue'
-import { STORAGE_KEY } from '../constants.js'
+import { STORAGE_KEY, TIMELINE_START_YEAR, TIMELINE_START_MONTH } from '../constants.js'
+
+// 持久化用絕對月座標 startAbs（年*12+月+小數），與時間軸起點脫鉤：
+// 起點常數改版時，已存資料的日期不會跟著位移（39f9cdb 起點從 2026-01 改
+// 2026-07 曾使舊資料整批平移 6 個月）。記憶體內仍用相對 offset startMonth。
+const ORIGIN_ABS = TIMELINE_START_YEAR * 12 + TIMELINE_START_MONTH
+
+function fromStored(p) {
+  const { startAbs, ...rest } = p
+  return {
+    categoryId: null,
+    ...rest,
+    startMonth: typeof startAbs === 'number' ? startAbs - ORIGIN_ABS : (p.startMonth ?? null),
+  }
+}
+
+function toStorable(p) {
+  const { startMonth, ...rest } = p
+  return {
+    ...rest,
+    startAbs: typeof startMonth === 'number' ? startMonth + ORIGIN_ABS : null,
+  }
+}
 
 // 儲存格式 { categories, projects }；讀到舊格式（純 projects 陣列）自動遷移
 function normalize(data) {
@@ -24,14 +46,14 @@ function load() {
 
 export function useProjects() {
   const initial = load()
-  const projects = ref(initial.projects.map((p) => ({ categoryId: null, ...p })))
+  const projects = ref(initial.projects.map(fromStored))
   const categories = ref(initial.categories)
 
   // 任何變化（深層）都自動存回 localStorage
   watch([projects, categories], () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       categories: categories.value,
-      projects: projects.value,
+      projects: projects.value.map(toStorable),
     }))
   }, { deep: true })
 
@@ -84,14 +106,14 @@ export function useProjects() {
 
   function loadFromArray(data) {
     const norm = normalize(data)
-    projects.value = norm.projects.map((p) => ({ categoryId: null, ...p }))
+    projects.value = norm.projects.map(fromStored)
     categories.value = norm.categories
   }
 
   function toArray() {
     return JSON.parse(JSON.stringify({
       categories: categories.value,
-      projects: projects.value,
+      projects: projects.value.map(toStorable),
     }))
   }
 

@@ -125,3 +125,62 @@ describe('categories', () => {
     expect(projects.value[0].categoryId).toBe('c1')
   })
 })
+
+describe('absolute date persistence', () => {
+  // 時間軸起點 2026-07 → BASE = 2026*12 + 6
+  const BASE = 2026 * 12 + 6
+
+  it('persists startAbs (absolute month) instead of relative startMonth', async () => {
+    const { addProject, updateProject } = useProjects()
+    const p = addProject({ name: 'A' })
+    updateProject(p.id, { startMonth: 3.25, lane: 0 })
+    await nextTick()
+    const saved = JSON.parse(localStorage.getItem('roadmap.projects'))
+    expect(saved.projects[0].startAbs).toBe(BASE + 3.25)
+    expect(saved.projects[0].startMonth).toBeUndefined()
+  })
+
+  it('unscheduled projects persist startAbs null', async () => {
+    const { addProject } = useProjects()
+    addProject({ name: 'A' })
+    await nextTick()
+    const saved = JSON.parse(localStorage.getItem('roadmap.projects'))
+    expect(saved.projects[0].startAbs).toBe(null)
+  })
+
+  it('loads startAbs back into the current origin offset', () => {
+    localStorage.setItem('roadmap.projects', JSON.stringify({
+      categories: [],
+      projects: [{ id: 'x', name: 'A', startAbs: BASE + 5, duration: 2, lane: 0 }],
+    }))
+    const { projects } = useProjects()
+    expect(projects.value[0].startMonth).toBe(5)
+  })
+
+  it('startAbs survives a save/load round trip unchanged', async () => {
+    localStorage.setItem('roadmap.projects', JSON.stringify({
+      categories: [],
+      projects: [{ id: 'x', name: 'A', startAbs: BASE + 5, duration: 2, lane: 0 }],
+    }))
+    const first = useProjects()
+    first.updateProject('x', { duration: 3 })  // 觸發存檔，但沒動時間
+    await nextTick()
+    const saved = JSON.parse(localStorage.getItem('roadmap.projects'))
+    expect(saved.projects[0].startAbs).toBe(BASE + 5)
+  })
+
+  it('legacy data with only startMonth still loads as offset', () => {
+    localStorage.setItem('roadmap.projects', JSON.stringify([
+      { id: 'x', name: 'Old', startMonth: 2, duration: 1, lane: 0 },
+    ]))
+    const { projects } = useProjects()
+    expect(projects.value[0].startMonth).toBe(2)
+  })
+
+  it('export payload carries startAbs', () => {
+    const { addProject, updateProject, toArray } = useProjects()
+    const p = addProject({ name: 'A' })
+    updateProject(p.id, { startMonth: 1.5, lane: 0 })
+    expect(toArray().projects[0].startAbs).toBe(BASE + 1.5)
+  })
+})
