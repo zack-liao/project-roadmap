@@ -10,7 +10,6 @@ const props = defineProps({
   monthWidth: { type: Number, required: true },
   trackLeft: { type: Number, required: true },
   trackTop: { type: Number, required: true },
-  gapPx: { type: Number, default: Number.POSITIVE_INFINITY },
   selected: { type: Boolean, default: false },
 })
 const emit = defineEmits(['edit', 'remove', 'update', 'select'])
@@ -26,8 +25,8 @@ const style = computed(() => ({
 
 const durationLabel = computed(() => `${props.project.duration}mo`)
 
-// 名稱實際像素寬放不進條內時，整個名稱浮到條外右側（標準 Gantt 做法），
-// 永不截斷成省略號。CHROME_PX 為條內名稱以外的固定佔位（padding、把手、時長徽章、刪除鈕）。
+// 名稱實際像素寬放不進條內時，條內截斷並以 hover tooltip 顯示全名。
+// CHROME_PX 為條內名稱以外的固定佔位（padding、把手、時長徽章、刪除鈕）。
 const CHROME_PX = 96
 const measureCtx = document.createElement('canvas').getContext('2d')
 let labelFont = null
@@ -42,12 +41,8 @@ function nameWidth(text) {
 const fitsInside = computed(() =>
   durationToPx(props.project.duration, props.monthWidth) >= nameWidth(props.project.name) + CHROME_PX
 )
-// 條外要留 18px 邊距，且不可壓到同 lane 右鄰的 bar；空隙不夠就退回條內截斷 + tooltip
-const isNarrow = computed(() =>
-  !fitsInside.value && props.gapPx >= nameWidth(props.project.name) + 18
-)
-// 名稱被截斷（塞條內又放不下）→ hover 顯示自製 tooltip（原生 title 太小）
-const isTruncated = computed(() => !fitsInside.value && !isNarrow.value)
+// 名稱被截斷 → hover 顯示自製 tooltip（原生 title 太小）
+const isTruncated = computed(() => !fitsInside.value)
 
 const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dragging } = useDragBar({
   project: () => props.project,
@@ -62,16 +57,15 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
 <template>
   <div
     class="bar"
-    :class="{ dragging, selected, narrow: isNarrow }"
+    :class="{ dragging, selected }"
     :style="style"
     @pointerdown="onPointerdownMove"
     @dblclick="emit('edit', project)"
   >
     <span v-if="isTruncated" class="tip" role="tooltip">{{ project.name }}</span>
     <div class="handle left" @pointerdown="onPointerdownResizeLeft"><i /></div>
-    <button v-if="!isNarrow" class="label" @click="emit('select', project.id)">{{ project.name }}</button>
-    <span v-if="!isNarrow" class="dur">{{ durationLabel }}</span>
-    <span v-if="isNarrow" class="label-out">{{ project.name }}</span>
+    <button class="label" @click="emit('select', project.id)">{{ project.name }}</button>
+    <span class="dur">{{ durationLabel }}</span>
     <button
       class="del"
       title="刪除"
@@ -153,17 +147,6 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
   cursor: inherit;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.bar.narrow { padding: 0 4px; z-index: 2; }
-.label-out {
-  position: absolute; left: calc(100% + 6px); top: 50%;
-  transform: translateY(-50%);
-  white-space: nowrap;
-  font-size: 12px; font-weight: 550; color: var(--text);
-  padding: 1px 6px; border-radius: var(--radius-xs);
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
-  pointer-events: none;
-}
-
 .dur {
   flex: none; margin-left: auto;
   font-family: var(--font-mono); font-size: 10.5px;
