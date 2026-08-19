@@ -1,11 +1,11 @@
 import { ref } from 'vue'
 import { useEventListener } from '@vueuse/core'
-import { pxToMonth, pxToLane, clampBar } from './geometry.js'
-import { MIN_DURATION, LANE_HEIGHT } from '../constants.js'
+import { pxToMonth, clampBar } from './geometry.js'
+import { MIN_DURATION } from '../constants.js'
 
 const CLICK_THRESHOLD = 4  // 位移小於此像素視為點擊，而非拖曳
 
-export function useDragBar({ project, monthWidth, trackLeft, trackTop, onChange, onSelect }) {
+export function useDragBar({ project, monthWidth, trackLeft, resolveLane, onChange, onSelect }) {
   const dragging = ref(false)
   let mode = null            // 'move' | 'left' | 'right'
   let grabOffsetMonths = 0
@@ -42,8 +42,8 @@ export function useDragBar({ project, monthWidth, trackLeft, trackTop, onChange,
 
     if (mode === 'move') {
       const clamped = clampBar(mouseMonth - grabOffsetMonths, snap.duration)
-      const lane = pxToLane(e.clientY, trackTop(), LANE_HEIGHT)
-      onChange({ startMonth: clamped.startMonth, lane })
+      const { categoryId, lane } = resolveLane(e.clientY)
+      onChange({ startMonth: clamped.startMonth, lane, categoryId })
     } else if (mode === 'right') {
       // 右緣跟滑鼠（邊界座標）：duration = 滑鼠位置 - 起始月
       const duration = mouseMonth - snap.startMonth

@@ -7,9 +7,14 @@ import ProjectList from './components/ProjectList.vue'
 import Toolbar from './components/Toolbar.vue'
 import DetailPanel from './components/DetailPanel.vue'
 import ConfirmDialog from './components/ConfirmDialog.vue'
+import CategoryModal from './components/CategoryModal.vue'
 import ToastStack from './components/ToastStack.vue'
 
-const { projects, addProject, updateProject, removeProject, exportJSON, importJSON } = useProjects()
+const {
+  projects, addProject, updateProject, removeProject,
+  categories, addCategory, updateCategory, removeCategory,
+  exportJSON, importJSON,
+} = useProjects()
 
 const modalOpen = ref(false)
 const editing = ref(null)
@@ -51,6 +56,41 @@ function schedule(id, patch) {
   updateProject(id, patch)
 }
 const removeTarget = ref(null)  // 待確認刪除的 project
+
+// 類別管理：catModalOpen 開表單（editingCategory null = 新增），刪除走確認框
+const catModalOpen = ref(false)
+const editingCategory = ref(null)
+const removeCategoryTarget = ref(null)
+
+function openAddCategory() {
+  editingCategory.value = null
+  catModalOpen.value = true
+}
+function openEditCategory(category) {
+  editingCategory.value = category
+  catModalOpen.value = true
+}
+function handleCategorySave(fields) {
+  if (editingCategory.value) {
+    updateCategory(editingCategory.value.id, fields)
+    toast('success', '類別已更新')
+  } else {
+    addCategory(fields)
+    toast('success', '類別已新增')
+  }
+  catModalOpen.value = false
+}
+function handleCategoryRemoveRequest(category) {
+  catModalOpen.value = false
+  removeCategoryTarget.value = category
+}
+function confirmCategoryRemove() {
+  const target = removeCategoryTarget.value
+  if (!target) return
+  removeCategory(target.id)
+  removeCategoryTarget.value = null
+  toast('success', '類別已刪除，原專案移到未分類')
+}
 
 function handleRemove(id) {
   removeTarget.value = projects.value.find((p) => p.id === id) || null
@@ -102,7 +142,10 @@ async function handleImport(file) {
       <main class="main">
         <Timeline
           :projects="projects"
+          :categories="categories"
           :selected-id="selectedId"
+          @add-category="openAddCategory"
+          @edit-category="openEditCategory"
           @edit="openEdit"
           @remove="handleRemove"
           @update="updateProject"
@@ -124,6 +167,20 @@ async function handleImport(file) {
     :project="editing"
     @save="handleSave"
     @close="modalOpen = false"
+  />
+  <CategoryModal
+    :open="catModalOpen"
+    :category="editingCategory"
+    @save="handleCategorySave"
+    @remove="handleCategoryRemoveRequest"
+    @close="catModalOpen = false"
+  />
+  <ConfirmDialog
+    :open="removeCategoryTarget !== null"
+    title="刪除類別"
+    :message="removeCategoryTarget ? `確定要刪除類別「${removeCategoryTarget.name}」？其中的專案會移到未分類。` : ''"
+    @confirm="confirmCategoryRemove"
+    @close="removeCategoryTarget = null"
   />
   <ConfirmDialog
     :open="removeTarget !== null"

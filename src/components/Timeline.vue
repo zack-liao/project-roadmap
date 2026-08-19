@@ -5,16 +5,17 @@ import {
   MONTH_COUNT, SUBDIVISIONS, LANE_HEIGHT,
   TIMELINE_START_YEAR, TIMELINE_START_MONTH,
 } from '../constants.js'
-import { pxToMonth, pxToLane } from '../composables/geometry.js'
+import { pxToMonth } from '../composables/geometry.js'
 import { useTimelineZoom } from '../composables/useTimelineZoom.js'
 import { buildColumns, buildYearGroups, dateToOffset } from '../composables/calendar.js'
 import ProjectBar from './ProjectBar.vue'
 
 const props = defineProps({
   projects: { type: Array, required: true },
+  categories: { type: Array, default: () => [] },
   selectedId: { type: String, default: null },
 })
-const emit = defineEmits(['edit', 'remove', 'update', 'schedule', 'select'])
+const emit = defineEmits(['edit', 'remove', 'update', 'schedule', 'select', 'add-category', 'edit-category'])
 
 // 月寬可縮放；內容總寬隨之變化，超出容器就橫向捲動
 const { monthWidth, totalWidth, zoomPercent, zoomAt, fitRange, reset } = useTimelineZoom()
@@ -90,10 +91,38 @@ const scheduled = computed(() =>
   props.projects.filter((p) => p.startMonth !== null && p.lane !== null)
 )
 
+// Swimlane 帶：每個類別一帶 + 固定殿後的「未分類」帶。
+// lane 為帶內列號；帶高隨帶內最大 lane 成長，最少 2 列。
+const bands = computed(() => {
+  const defs = [
+    ...props.categories.map((c) => ({ id: c.id, name: c.name, color: c.color, editable: true })),
+    { id: null, name: '未分類', color: null, editable: false },
+  ]
+  let top = 0
+  return defs.map((d) => {
+    const items = scheduled.value.filter((p) => (p.categoryId ?? null) === d.id)
+    const laneCount = Math.max(2, ...items.map((p) => (p.lane ?? 0) + 1))
+    const height = laneCount * LANE_HEIGHT + 8
+    const band = { ...d, items, laneCount, height, top }
+    top += height
+    return band
+  })
+})
+const trackHeight = computed(() => bands.value.reduce((s, b) => s + b.height, 0))
 
-const laneCount = computed(() =>
-  Math.max(4, ...scheduled.value.map((p) => (p.lane ?? 0) + 1))
-)
+// 視窗 y 座標 → 落在哪個帶的哪個列。lane 可到 laneCount（帶尾新增一列）。
+function resolveLane(clientY) {
+  const y = clientY - trackTop.value
+  let acc = 0
+  for (const b of bands.value) {
+    if (y < acc + b.height || b === bands.value[bands.value.length - 1]) {
+      const lane = Math.max(0, Math.min(b.laneCount, Math.floor((y - acc) / LANE_HEIGHT)))
+      return { categoryId: b.id, lane }
+    }
+    acc += b.height
+  }
+  return { categoryId: null, lane: 0 }
+}
 
 // 從側欄拖入時高亮軌道，提示可放置
 const dropActive = ref(false)
@@ -102,10 +131,10 @@ function onDrop(e) {
   dropActive.value = false
   const id = e.dataTransfer.getData('text/plain')
   if (!id) return
-  const raw = pxToMonth(e.clientX, trackLeft.value, monthWidth)
+  const raw = pxToMonth(e.clientX, trackLeft.value, monthWidth.value)
   const startMonth = Math.min(raw, MONTH_COUNT - 1)
-  const lane = pxToLane(e.clientY, trackTop.value, LANE_HEIGHT)
-  emit('schedule', id, { startMonth, lane })
+  const { categoryId, lane } = resolveLane(e.clientY)
+  emit('schedule', id, { startMonth, lane, categoryId })
 }
 
 defineExpose({ trackEl, monthWidth })
@@ -161,7 +190,7 @@ defineExpose({ trackEl, monthWidth })
           ref="trackEl"
           class="track"
           :class="{ 'drop-active': dropActive }"
-          :style="{ height: laneCount * LANE_HEIGHT + 8 + 'px' }"
+          :style="{ height: trackHeight + 'px' }"
           @dragover.prevent="dropActive = true"
           @dragleave.self="dropActive = false"
           @drop="onDrop"
@@ -193,26 +222,50 @@ defineExpose({ trackEl, monthWidth })
             <span class="today-chip">{{ todayLabel }}</span>
           </div>
 
+          <!-- Swimlane 帶：底色 + 左端 sticky 類別名 -->
+          <div
+            v-for="b in bands"
+            :key="b.id ?? 'uncat'"
+            class="band"
+            :style="{
+              top: b.top + 'px',
+              height: b.height + 'px',
+              background: b.color ? `color-mix(in srgb, ${b.color} 9%, transparent)` : 'transparent',
+            }"
+          >
+            <component
+              :is="b.editable ? 'button' : 'span'"
+              class="band-name"
+              :class="{ editable: b.editable }"
+              :style="b.color ? { borderColor: `color-mix(in srgb, ${b.color} 55%, transparent)`, color: b.color } : {}"
+              @click="b.editable && emit('edit-category', props.categories.find((c) => c.id === b.id))"
+            >{{ b.name }}</component>
+          </div>
+
           <p v-if="!scheduled.length" class="track-empty">
             從左側把 Project 拖到這裡開始排程
           </p>
 
-          <ProjectBar
-            v-for="p in scheduled"
-            :key="p.id"
-            :project="p"
-            :month-width="monthWidth"
-            :track-left="trackLeft"
-            :track-top="trackTop"
-            :selected="p.id === selectedId"
-            @edit="emit('edit', $event)"
-            @remove="emit('remove', $event)"
-            @update="(id, patch) => emit('update', id, patch)"
-            @select="emit('select', $event)"
-          />
+          <template v-for="b in bands" :key="'bars-' + (b.id ?? 'uncat')">
+            <ProjectBar
+              v-for="p in b.items"
+              :key="p.id"
+              :project="p"
+              :month-width="monthWidth"
+              :track-left="trackLeft"
+              :band-top="b.top"
+              :resolve-lane="resolveLane"
+              :selected="p.id === selectedId"
+              @edit="emit('edit', $event)"
+              @remove="emit('remove', $event)"
+              @update="(id, patch) => emit('update', id, patch)"
+              @select="emit('select', $event)"
+            />
+          </template>
         </div>
       </div>
     </div>
+    <button class="add-category" @click="emit('add-category')">＋ 新增類別</button>
   </div>
 </template>
 
@@ -308,6 +361,36 @@ defineExpose({ trackEl, monthWidth })
   white-space: nowrap;
   box-shadow: 0 0 10px var(--today-soft);
 }
+
+.band {
+  position: absolute; left: 0; right: 0;
+  border-bottom: 1px dashed var(--border-strong);
+  pointer-events: none;   /* 不擋 bar 拖曳；名稱 chip 自己開 pointer-events */
+}
+.band:last-child { border-bottom: none; }
+.band-name {
+  position: sticky; left: 8px; top: 0;
+  display: inline-block;
+  margin: 6px 0 0 8px; padding: 2px 10px;
+  border: 1px solid var(--border-strong); border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  color: var(--muted);
+  font: inherit; font-size: 11.5px; font-weight: 600; letter-spacing: .03em;
+  pointer-events: auto;
+  z-index: 5;
+}
+.band-name.editable { cursor: pointer; }
+.band-name.editable:hover { filter: brightness(1.25); }
+
+.add-category {
+  margin-top: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px dashed var(--border-strong); border-radius: var(--radius-sm);
+  background: transparent; color: var(--muted);
+  font: inherit; font-size: 12px; cursor: pointer;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.add-category:hover { color: var(--accent); border-color: var(--accent); }
 
 .track-empty {
   position: absolute; inset: 0;

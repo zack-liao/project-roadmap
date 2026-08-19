@@ -9,7 +9,8 @@ const props = defineProps({
   project: { type: Object, required: true },
   monthWidth: { type: Number, required: true },
   trackLeft: { type: Number, required: true },
-  trackTop: { type: Number, required: true },
+  bandTop: { type: Number, default: 0 },
+  resolveLane: { type: Function, required: true },
   selected: { type: Boolean, default: false },
 })
 const emit = defineEmits(['edit', 'remove', 'update', 'select'])
@@ -19,7 +20,7 @@ const color = computed(() => props.project.color || 'var(--accent)')
 const style = computed(() => ({
   left: monthToPx(props.project.startMonth ?? 0, props.monthWidth) + 'px',
   width: durationToPx(props.project.duration, props.monthWidth) + 'px',
-  top: (props.project.lane ?? 0) * LANE_HEIGHT + 'px',
+  top: props.bandTop + (props.project.lane ?? 0) * LANE_HEIGHT + 5 + 'px',
   '--bar-color': color.value,
 }))
 
@@ -48,7 +49,7 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
   project: () => props.project,
   monthWidth: () => props.monthWidth,
   trackLeft: () => props.trackLeft,
-  trackTop: () => props.trackTop,
+  resolveLane: props.resolveLane,
   onChange: (patch) => emit('update', props.project.id, patch),
   onSelect: () => emit('select', props.project.id),
 })

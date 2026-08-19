@@ -1,21 +1,38 @@
 import { ref, watch } from 'vue'
 import { STORAGE_KEY } from '../constants.js'
 
+// 儲存格式 { categories, projects }；讀到舊格式（純 projects 陣列）自動遷移
+function normalize(data) {
+  if (Array.isArray(data)) return { categories: [], projects: data }
+  if (data && typeof data === 'object') {
+    return {
+      categories: Array.isArray(data.categories) ? data.categories : [],
+      projects: Array.isArray(data.projects) ? data.projects : [],
+    }
+  }
+  return { categories: [], projects: [] }
+}
+
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
+    return normalize(raw ? JSON.parse(raw) : null)
   } catch {
-    return []
+    return { categories: [], projects: [] }
   }
 }
 
 export function useProjects() {
-  const projects = ref(load())
+  const initial = load()
+  const projects = ref(initial.projects.map((p) => ({ categoryId: null, ...p })))
+  const categories = ref(initial.categories)
 
   // 任何變化（深層）都自動存回 localStorage
-  watch(projects, (val) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(val))
+  watch([projects, categories], () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      categories: categories.value,
+      projects: projects.value,
+    }))
   }, { deep: true })
 
   function addProject(fields) {
@@ -28,6 +45,7 @@ export function useProjects() {
       startMonth: null,
       duration: 1,
       lane: null,
+      categoryId: null,
     }
     projects.value.push(p)
     return p
@@ -42,12 +60,39 @@ export function useProjects() {
     projects.value = projects.value.filter((x) => x.id !== id)
   }
 
-  function loadFromArray(arr) {
-    projects.value = Array.isArray(arr) ? arr : []
+  function addCategory(fields) {
+    const c = {
+      id: crypto.randomUUID(),
+      name: fields.name ?? '',
+      color: fields.color ?? '#60a5fa',
+    }
+    categories.value.push(c)
+    return c
+  }
+
+  function updateCategory(id, patch) {
+    const c = categories.value.find((x) => x.id === id)
+    if (c) Object.assign(c, patch)
+  }
+
+  function removeCategory(id) {
+    categories.value = categories.value.filter((x) => x.id !== id)
+    for (const p of projects.value) {
+      if (p.categoryId === id) p.categoryId = null
+    }
+  }
+
+  function loadFromArray(data) {
+    const norm = normalize(data)
+    projects.value = norm.projects.map((p) => ({ categoryId: null, ...p }))
+    categories.value = norm.categories
   }
 
   function toArray() {
-    return JSON.parse(JSON.stringify(projects.value))
+    return JSON.parse(JSON.stringify({
+      categories: categories.value,
+      projects: projects.value,
+    }))
   }
 
   function exportJSON() {
@@ -66,10 +111,13 @@ export function useProjects() {
       const reader = new FileReader()
       reader.onload = () => {
         try {
-          const arr = JSON.parse(reader.result)
-          if (!Array.isArray(arr)) throw new Error('格式錯誤：不是陣列')
-          loadFromArray(arr)
-          resolve(arr.length)
+          const data = JSON.parse(reader.result)
+          const isLegacy = Array.isArray(data)
+          if (!isLegacy && (typeof data !== 'object' || data === null || !Array.isArray(data.projects))) {
+            throw new Error('格式錯誤：需要陣列或 { categories, projects }')
+          }
+          loadFromArray(data)
+          resolve(isLegacy ? data.length : data.projects.length)
         } catch (err) {
           reject(err)
         }
@@ -81,6 +129,7 @@ export function useProjects() {
 
   return {
     projects, addProject, updateProject, removeProject,
+    categories, addCategory, updateCategory, removeCategory,
     loadFromArray, toArray, exportJSON, importJSON,
   }
 }
