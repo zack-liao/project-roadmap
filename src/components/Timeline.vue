@@ -390,11 +390,11 @@ defineExpose({ trackEl, monthWidth })
 .band-name {
   position: sticky; left: 8px;
   display: inline-block;
-  margin: 4px 0 0 8px; padding: 2px 10px;
+  margin: 5px 0 0 8px; padding: 3px 14px;
   border: 1px solid var(--border-strong); border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 85%, transparent);
   color: var(--muted);
-  font: inherit; font-size: 13.5px; font-weight: 650; letter-spacing: .03em;
+  font: inherit; font-size: 16px; font-weight: 700; letter-spacing: .04em;
   pointer-events: auto;
   z-index: 5;
 }
