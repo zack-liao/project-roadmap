@@ -2,7 +2,7 @@
 import { ref, computed, nextTick } from 'vue'
 import { useElementBounding } from '@vueuse/core'
 import {
-  MONTH_COUNT, SUBDIVISIONS, LANE_HEIGHT, BAND_HEADER,
+  MONTH_COUNT, SUBDIVISIONS, LANE_HEIGHT, BAND_HEADER, BAND_GAP,
   TIMELINE_START_YEAR, TIMELINE_START_MONTH,
 } from '../constants.js'
 import { pxToMonth, resolveBandLane } from '../composables/geometry.js'
@@ -104,11 +104,14 @@ const bands = computed(() => {
     const laneCount = Math.max(2, ...items.map((p) => (p.lane ?? 0) + 1))
     const height = BAND_HEADER + laneCount * LANE_HEIGHT + 8
     const band = { ...d, items, laneCount, height, top }
-    top += height
+    top += height + BAND_GAP
     return band
   })
 })
-const trackHeight = computed(() => bands.value.reduce((s, b) => s + b.height, 0))
+const trackHeight = computed(() => {
+  const last = bands.value[bands.value.length - 1]
+  return last ? last.top + last.height + 8 : 0
+})
 
 // 每條 bar 右側到「同帶同列」下一條 bar 的空隙（px）。
 // ProjectBar 用它決定名稱能否浮到條外而不壓到鄰條。
@@ -240,7 +243,7 @@ defineExpose({ trackEl, monthWidth })
             <span class="today-chip">{{ todayLabel }}</span>
           </div>
 
-          <!-- Swimlane 帶：底色 + 左端 sticky 類別名 -->
+          <!-- Swimlane 帶：視窗框（title bar + 圓角外框） -->
           <div
             v-for="b in bands"
             :key="b.id ?? 'uncat'"
@@ -248,16 +251,25 @@ defineExpose({ trackEl, monthWidth })
             :style="{
               top: b.top + 'px',
               height: b.height + 'px',
-              background: b.color ? `color-mix(in srgb, ${b.color} 9%, transparent)` : 'transparent',
+              borderColor: `color-mix(in srgb, ${b.color || 'var(--border-strong)'} 45%, transparent)`,
+              background: b.color ? `color-mix(in srgb, ${b.color} 7%, transparent)` : 'transparent',
             }"
           >
-            <component
-              :is="b.editable ? 'button' : 'span'"
-              class="band-name"
-              :class="{ editable: b.editable }"
-              :style="b.color ? { borderColor: `color-mix(in srgb, ${b.color} 55%, transparent)`, color: b.color } : {}"
-              @click="b.editable && emit('edit-category', props.categories.find((c) => c.id === b.id))"
-            >{{ b.name }}</component>
+            <div
+              class="band-head"
+              :style="{
+                background: `color-mix(in srgb, ${b.color || 'var(--border-strong)'} 16%, transparent)`,
+                borderColor: `color-mix(in srgb, ${b.color || 'var(--border-strong)'} 45%, transparent)`,
+              }"
+            >
+              <component
+                :is="b.editable ? 'button' : 'span'"
+                class="band-name"
+                :class="{ editable: b.editable }"
+                :style="b.color ? { color: b.color } : {}"
+                @click="b.editable && emit('edit-category', props.categories.find((c) => c.id === b.id))"
+              >{{ b.name }}</component>
+            </div>
           </div>
 
           <p v-if="!scheduled.length" class="track-empty">
@@ -382,24 +394,29 @@ defineExpose({ trackEl, monthWidth })
 }
 
 .band {
-  position: absolute; left: 0; right: 0;
-  border-bottom: 1px dashed var(--border-strong);
-  pointer-events: none;   /* 不擋 bar 拖曳；名稱 chip 自己開 pointer-events */
+  position: absolute; left: 2px; right: 2px;
+  border: 1.5px solid;
+  border-radius: 10px;
+  overflow: hidden;
+  pointer-events: none;   /* 不擋 bar 拖曳；名稱自己開 pointer-events */
 }
-.band:last-child { border-bottom: none; }
+.band-head {
+  height: 34.5px;         /* BAND_HEADER 36 - 上框線 */
+  display: flex; align-items: center;
+  border-bottom: 1px solid;
+}
 .band-name {
-  position: sticky; left: 8px;
+  position: sticky; left: 12px;
   display: inline-block;
-  margin: 5px 0 0 8px; padding: 3px 14px;
-  border: 1px solid var(--border-strong); border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 85%, transparent);
-  color: var(--muted);
-  font: inherit; font-size: 16px; font-weight: 700; letter-spacing: .04em;
+  margin-left: 12px; padding: 0;
+  border: none; background: transparent;
+  color: var(--text);
+  font: inherit; font-size: 15.5px; font-weight: 700; letter-spacing: .05em;
   pointer-events: auto;
   z-index: 5;
 }
 .band-name.editable { cursor: pointer; }
-.band-name.editable:hover { filter: brightness(1.25); }
+.band-name.editable:hover { filter: brightness(1.3); }
 
 .add-category {
   margin-top: var(--sp-2);

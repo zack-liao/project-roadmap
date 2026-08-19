@@ -21,5 +21,7 @@ export const MIN_DURATION = SNAP        // 橫條最短長度
 // 每條軌道（lane）的高度，橫條上下拖曳吸附到整數 lane
 export const LANE_HEIGHT = 44
 
-// 每個 swimlane 帶頂部的標題列高度（放類別名 chip，bar 不會進入這區）
-export const BAND_HEADER = 40
+// 每個 swimlane 帶頂部的標題列高度（視窗框的 title bar，bar 不會進入這區）
+export const BAND_HEADER = 36
+// 帶與帶之間的垂直空隙
+export const BAND_GAP = 10
