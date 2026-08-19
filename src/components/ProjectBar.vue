@@ -46,6 +46,8 @@ const fitsInside = computed(() =>
 const isNarrow = computed(() =>
   !fitsInside.value && props.gapPx >= nameWidth(props.project.name) + 18
 )
+// 名稱被截斷（塞條內又放不下）→ hover 顯示自製 tooltip（原生 title 太小）
+const isTruncated = computed(() => !fitsInside.value && !isNarrow.value)
 
 const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dragging } = useDragBar({
   project: () => props.project,
@@ -62,10 +64,10 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
     class="bar"
     :class="{ dragging, selected, narrow: isNarrow }"
     :style="style"
-    :title="project.name"
     @pointerdown="onPointerdownMove"
     @dblclick="emit('edit', project)"
   >
+    <span v-if="isTruncated" class="tip" role="tooltip">{{ project.name }}</span>
     <div class="handle left" @pointerdown="onPointerdownResizeLeft"><i /></div>
     <button v-if="!isNarrow" class="label" @click="emit('select', project.id)">{{ project.name }}</button>
     <span v-if="!isNarrow" class="dur">{{ durationLabel }}</span>
@@ -103,7 +105,22 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
   background: var(--bar-color);
   border-radius: var(--radius-sm) 0 0 var(--radius-sm);
 }
-.bar:hover { border-color: color-mix(in srgb, var(--bar-color) 80%, transparent); box-shadow: var(--shadow); }
+.bar:hover { border-color: color-mix(in srgb, var(--bar-color) 80%, transparent); box-shadow: var(--shadow); z-index: 6; }
+
+/* hover 才浮出的完整名稱 tooltip（僅截斷的 bar 有） */
+.tip {
+  position: absolute; left: 0; bottom: calc(100% + 6px);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px; font-weight: 550; color: var(--text);
+  white-space: nowrap;
+  opacity: 0; visibility: hidden;
+  transition: opacity var(--dur) var(--ease);
+  pointer-events: none; z-index: 10;
+}
+.bar:hover .tip { opacity: 1; visibility: visible; transition-delay: .15s; }
 .bar.dragging { cursor: grabbing; opacity: .88; box-shadow: var(--shadow-lg); z-index: 5; }
 .bar.selected {
   border-color: var(--bar-color);
