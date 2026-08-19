@@ -394,7 +394,7 @@ defineExpose({ trackEl, monthWidth })
   border: 1px solid var(--border-strong); border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 85%, transparent);
   color: var(--muted);
-  font: inherit; font-size: 11.5px; font-weight: 600; letter-spacing: .03em;
+  font: inherit; font-size: 13.5px; font-weight: 650; letter-spacing: .03em;
   pointer-events: auto;
   z-index: 5;
 }

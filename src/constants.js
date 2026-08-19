@@ -22,4 +22,4 @@ export const MIN_DURATION = SNAP        // 橫條最短長度
 export const LANE_HEIGHT = 44
 
 // 每個 swimlane 帶頂部的標題列高度（放類別名 chip，bar 不會進入這區）
-export const BAND_HEADER = 28
+export const BAND_HEADER = 34
