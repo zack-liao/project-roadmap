@@ -6,6 +6,7 @@ import Timeline from './components/Timeline.vue'
 import ProjectList from './components/ProjectList.vue'
 import Toolbar from './components/Toolbar.vue'
 import DetailPanel from './components/DetailPanel.vue'
+import ConfirmDialog from './components/ConfirmDialog.vue'
 import ToastStack from './components/ToastStack.vue'
 
 const { projects, addProject, updateProject, removeProject, exportJSON, importJSON } = useProjects()
@@ -49,9 +50,17 @@ function handleSave(fields) {
 function schedule(id, patch) {
   updateProject(id, patch)
 }
+const removeTarget = ref(null)  // 待確認刪除的 project
+
 function handleRemove(id) {
-  removeProject(id)
-  if (selectedId.value === id) selectedId.value = null
+  removeTarget.value = projects.value.find((p) => p.id === id) || null
+}
+function confirmRemove() {
+  const target = removeTarget.value
+  if (!target) return
+  removeProject(target.id)
+  if (selectedId.value === target.id) selectedId.value = null
+  removeTarget.value = null
   toast('success', '已刪除')
 }
 function handleExport() {
@@ -115,6 +124,13 @@ async function handleImport(file) {
     :project="editing"
     @save="handleSave"
     @close="modalOpen = false"
+  />
+  <ConfirmDialog
+    :open="removeTarget !== null"
+    title="刪除 Project"
+    :message="removeTarget ? `確定要刪除「${removeTarget.name}」？此動作無法復原。` : ''"
+    @confirm="confirmRemove"
+    @close="removeTarget = null"
   />
   <ToastStack :toasts="toasts" />
 </template>
