@@ -25,6 +25,10 @@ const style = computed(() => ({
 
 const durationLabel = computed(() => `${props.project.duration}mo`)
 
+// 橫條太窄放不下名稱時，名稱浮到條外右側（標準 Gantt 做法）
+const NARROW_PX = 140
+const isNarrow = computed(() => durationToPx(props.project.duration, props.monthWidth) < NARROW_PX)
+
 const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dragging } = useDragBar({
   project: () => props.project,
   monthWidth: () => props.monthWidth,
@@ -38,14 +42,16 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
 <template>
   <div
     class="bar"
-    :class="{ dragging, selected }"
+    :class="{ dragging, selected, narrow: isNarrow }"
     :style="style"
+    :title="project.name"
     @pointerdown="onPointerdownMove"
     @dblclick="emit('edit', project)"
   >
     <div class="handle left" @pointerdown="onPointerdownResizeLeft"><i /></div>
-    <button class="label" @click="emit('select', project.id)">{{ project.name }}</button>
-    <span class="dur">{{ durationLabel }}</span>
+    <button v-if="!isNarrow" class="label" @click="emit('select', project.id)">{{ project.name }}</button>
+    <span v-if="!isNarrow" class="dur">{{ durationLabel }}</span>
+    <span v-if="isNarrow" class="label-out">{{ project.name }}</span>
     <button
       class="del"
       title="刪除"
@@ -67,7 +73,8 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
   border: 1px solid color-mix(in srgb, var(--bar-color) 45%, transparent);
   color: var(--text);
   font-family: var(--font-ui); font-size: 12.5px;
-  overflow: hidden; box-sizing: border-box;
+  /* overflow 保持 visible：label 需要 position:sticky（overflow hidden 會使 sticky 相對 bar 自身而失效） */
+  box-sizing: border-box;
   cursor: grab; user-select: none; touch-action: none;
   transition: box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
@@ -76,6 +83,7 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
   content: '';
   position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
   background: var(--bar-color);
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
 }
 .bar:hover { border-color: color-mix(in srgb, var(--bar-color) 80%, transparent); box-shadow: var(--shadow); }
 .bar.dragging { cursor: grabbing; opacity: .88; box-shadow: var(--shadow-lg); z-index: 5; }
@@ -101,14 +109,29 @@ const { onPointerdownMove, onPointerdownResizeLeft, onPointerdownResizeRight, dr
 .bar:hover .handle i, .bar.selected .handle i { opacity: 1; }
 
 .label {
-  flex: 1; min-width: 0;
+  /* sticky：橫條左端捲出視口時，名稱貼在可視左緣不消失。
+     shrink-to-fit（非 flex:1）才有滑動空間 */
+  position: sticky; left: 12px;
+  flex: 0 1 auto; min-width: 0;
   padding: 0; margin: 0; border: none; background: transparent;
   font: inherit; font-weight: 550; color: inherit; text-align: left;
   cursor: inherit;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.bar.narrow { padding: 0 4px; }
+.label-out {
+  position: absolute; left: calc(100% + 6px); top: 50%;
+  transform: translateY(-50%);
+  max-width: 180px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-size: 12px; font-weight: 550; color: var(--text);
+  padding: 1px 6px; border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  pointer-events: none;
+}
+
 .dur {
-  flex: none;
+  flex: none; margin-left: auto;
   font-family: var(--font-mono); font-size: 10.5px;
   color: var(--muted); letter-spacing: .02em;
 }
