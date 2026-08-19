@@ -33,13 +33,14 @@ export function pxToLane(y, trackTop, laneHeight) {
 
 // 帶幾何快照 + y（相對 track 頂）→ { categoryId, lane }。
 // bands: [{ id, top, height, laneCount }]。lane 可到 laneCount（帶尾新增一列）。
+// headerPx 為帶頂標題列高度，lane 0 從標題列下方起算。
 // 拖曳期間必須傳入「拖曳起點的快照」而非 live 帶佈局——lane 增加會使帶長高，
 // live 佈局會讓帶底永遠追著游標跑，往下拖永遠出不了帶。
-export function resolveBandLane(bands, y, laneHeight) {
+export function resolveBandLane(bands, y, laneHeight, headerPx = 0) {
   for (let i = 0; i < bands.length; i++) {
     const b = bands[i]
     if (y < b.top + b.height || i === bands.length - 1) {
-      const lane = Math.max(0, Math.min(b.laneCount, Math.floor((y - b.top) / laneHeight)))
+      const lane = Math.max(0, Math.min(b.laneCount, Math.floor((y - b.top - headerPx) / laneHeight)))
       return { categoryId: b.id, lane }
     }
   }

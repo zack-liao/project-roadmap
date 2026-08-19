@@ -71,6 +71,13 @@ describe('resolveBandLane', () => {
     { id: null, top: 192, height: 96, laneCount: 2 },
   ]
 
+  it('offsets lanes below the band header when headerPx is given', () => {
+    // header 28px：y=30 在 c1 header 下方一點 → lane 0；y=20 在 header 內 → clamp lane 0
+    expect(resolveBandLane(bands, 30, 44, 28)).toEqual({ categoryId: 'c1', lane: 0 })
+    expect(resolveBandLane(bands, 20, 44, 28)).toEqual({ categoryId: 'c1', lane: 0 })
+    expect(resolveBandLane(bands, 28 + 44 + 2, 44, 28)).toEqual({ categoryId: 'c1', lane: 1 })
+  })
+
   it('maps y inside first band to its lanes', () => {
     expect(resolveBandLane(bands, 10, 44)).toEqual({ categoryId: 'c1', lane: 0 })
     expect(resolveBandLane(bands, 50, 44)).toEqual({ categoryId: 'c1', lane: 1 })

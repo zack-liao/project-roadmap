@@ -2,7 +2,7 @@
 import { ref, computed, nextTick } from 'vue'
 import { useElementBounding } from '@vueuse/core'
 import {
-  MONTH_COUNT, SUBDIVISIONS, LANE_HEIGHT,
+  MONTH_COUNT, SUBDIVISIONS, LANE_HEIGHT, BAND_HEADER,
   TIMELINE_START_YEAR, TIMELINE_START_MONTH,
 } from '../constants.js'
 import { pxToMonth, resolveBandLane } from '../composables/geometry.js'
@@ -102,7 +102,7 @@ const bands = computed(() => {
   return defs.map((d) => {
     const items = scheduled.value.filter((p) => (p.categoryId ?? null) === d.id)
     const laneCount = Math.max(2, ...items.map((p) => (p.lane ?? 0) + 1))
-    const height = laneCount * LANE_HEIGHT + 8
+    const height = BAND_HEADER + laneCount * LANE_HEIGHT + 8
     const band = { ...d, items, laneCount, height, top }
     top += height
     return band
@@ -139,7 +139,7 @@ function makeLaneResolver() {
   const snap = bands.value.map((b) => ({
     id: b.id, top: b.top, height: b.height, laneCount: b.laneCount,
   }))
-  return (clientY) => resolveBandLane(snap, clientY - trackTop.value, LANE_HEIGHT)
+  return (clientY) => resolveBandLane(snap, clientY - trackTop.value, LANE_HEIGHT, BAND_HEADER)
 }
 
 // 從側欄拖入時高亮軌道，提示可放置
@@ -271,7 +271,7 @@ defineExpose({ trackEl, monthWidth })
               :project="p"
               :month-width="monthWidth"
               :track-left="trackLeft"
-              :band-top="b.top"
+              :band-top="b.top + BAND_HEADER"
               :gap-px="gapById[p.id]"
               :make-lane-resolver="makeLaneResolver"
               :selected="p.id === selectedId"
@@ -388,9 +388,9 @@ defineExpose({ trackEl, monthWidth })
 }
 .band:last-child { border-bottom: none; }
 .band-name {
-  position: sticky; left: 8px; top: 0;
+  position: sticky; left: 8px;
   display: inline-block;
-  margin: 6px 0 0 8px; padding: 2px 10px;
+  margin: 4px 0 0 8px; padding: 2px 10px;
   border: 1px solid var(--border-strong); border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 85%, transparent);
   color: var(--muted);
