@@ -1,11 +1,19 @@
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import AppIcon from './AppIcon.vue'
 
 const props = defineProps({
   projects: { type: Array, required: true },
 })
 const emit = defineEmits(['add', 'edit', 'remove'])
+
+// 收合狀態記在 localStorage,重開維持
+const COLLAPSE_KEY = 'roadmap.sidebarCollapsed'
+const collapsed = ref(localStorage.getItem(COLLAPSE_KEY) === '1')
+function toggleCollapse() {
+  collapsed.value = !collapsed.value
+  localStorage.setItem(COLLAPSE_KEY, collapsed.value ? '1' : '0')
+}
 
 const unscheduled = computed(() =>
   props.projects.filter((p) => p.startMonth === null)
@@ -18,11 +26,27 @@ function onDragStart(e, id) {
 </script>
 
 <template>
-  <aside class="sidebar">
+  <aside class="sidebar" :class="{ collapsed }">
     <div class="head">
-      <span class="title">未排程</span>
-      <span class="count">{{ unscheduled.length }}</span>
+      <template v-if="!collapsed">
+        <span class="title">未排程</span>
+        <span class="count">{{ unscheduled.length }}</span>
+      </template>
+      <button
+        class="collapse-btn"
+        :title="collapsed ? '展開側欄' : '收合側欄'"
+        :aria-label="collapsed ? '展開側欄' : '收合側欄'"
+        :aria-expanded="!collapsed"
+        @click="toggleCollapse"
+      >
+        <AppIcon :name="collapsed ? 'chevron-right' : 'chevron-left'" :size="15" />
+      </button>
     </div>
+    <div v-if="collapsed" class="rail" @click="toggleCollapse">
+      <span class="rail-count">{{ unscheduled.length }}</span>
+      <span class="rail-label">未排程</span>
+    </div>
+    <template v-if="!collapsed">
 
     <div v-if="unscheduled.length" class="items">
       <div
@@ -58,6 +82,7 @@ function onDragStart(e, id) {
         <AppIcon name="plus" :size="14" />新增 Project
       </button>
     </div>
+    </template>
   </aside>
 </template>
 
@@ -65,12 +90,45 @@ function onDragStart(e, id) {
 .sidebar {
   flex: none;
   width: 264px;
+  transition: width var(--dur) var(--ease);
   height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--surface);
   border-right: 1px solid var(--border);
 }
+.sidebar.collapsed { width: 44px; }
+.sidebar.collapsed .head {
+  justify-content: center;
+  padding: var(--sp-3) 0;
+}
+.collapse-btn {
+  width: 24px; height: 24px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-xs);
+  background: var(--surface-2); color: var(--muted); cursor: pointer;
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.collapse-btn:hover { color: var(--text); border-color: var(--accent); }
+
+.rail {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--sp-2); padding-top: var(--sp-3);
+  cursor: pointer;
+}
+.rail-count {
+  min-width: 20px; height: 20px; padding: 0 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border-strong);
+  font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+}
+.rail-label {
+  writing-mode: vertical-rl;
+  font-size: 12px; letter-spacing: .2em; color: var(--faint);
+}
+
 .head {
   flex: none;
   display: flex;
