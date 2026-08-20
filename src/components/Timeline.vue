@@ -171,6 +171,8 @@ defineExpose({ trackEl, monthWidth })
     </div>
     <div ref="scrollEl" class="scroll" @wheel="onWheel">
       <div class="canvas" :style="{ width: totalWidth + 'px' }">
+        <!-- 表頭（年+月）垂直捲動時釘在頂部 -->
+        <div class="head">
         <!-- 上排：年份，跨越該年在範圍內的月數 -->
         <div class="year-row">
           <div
@@ -197,6 +199,7 @@ defineExpose({ trackEl, monthWidth })
             :class="{ 'year-start': c.isYearStart && c.index !== 0 }"
             :style="{ width: monthWidth + 'px' }"
           >{{ c.label }}</div>
+        </div>
         </div>
 
         <!-- 拖選聚焦的高亮區 -->
@@ -339,11 +342,19 @@ defineExpose({ trackEl, monthWidth })
   z-index: 7; pointer-events: none;
 }
 .scroll {
-  overflow-x: auto; overflow-y: hidden;
+  /* 垂直也在此捲動，表頭 sticky 才有效；限高避免把 DetailPanel 推出視野 */
+  overflow: auto;
+  max-height: calc(100vh - 230px);
   border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--surface); box-shadow: var(--shadow);
 }
 .canvas { position: relative; }
+
+.head {
+  position: sticky; top: 0;
+  z-index: 9;                 /* 蓋過 bar(≤6)、帶名(5)、拖選 overlay(7) */
+  background: var(--surface);
+}
 
 .year-row { display: flex; }
 .year-cell {
