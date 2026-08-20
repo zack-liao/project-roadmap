@@ -241,11 +241,18 @@ async function handleImport(file) {
   padding: var(--sp-5);
   display: flex; flex-direction: column;
   overflow: hidden;          /* 高度交給 timeline 內部捲動 */
+  position: relative;        /* 詳情卡浮動定位基準 */
 }
 .timeline-fill { flex: 1; min-height: 0; }
+/* 詳情卡改浮動 overlay：時間軸滿高，卡片永遠看得到 */
 .main > :deep(.detail) {
-  flex: none;
-  max-height: 38%;
+  position: absolute;
+  right: var(--sp-5); bottom: var(--sp-5);
+  width: 380px; max-width: calc(100% - 2 * var(--sp-5));
+  max-height: 55%;
   overflow: auto;
+  margin: 0;
+  box-shadow: var(--shadow-lg);
+  z-index: 20;
 }
 </style>
