@@ -97,6 +97,14 @@ export function useProjects() {
     if (c) Object.assign(c, patch)
   }
 
+  function moveCategory(id, toIndex) {
+    const from = categories.value.findIndex((x) => x.id === id)
+    if (from === -1) return
+    const to = Math.max(0, Math.min(categories.value.length - 1, toIndex))
+    const [c] = categories.value.splice(from, 1)
+    categories.value.splice(to, 0, c)
+  }
+
   function removeCategory(id) {
     categories.value = categories.value.filter((x) => x.id !== id)
     for (const p of projects.value) {
@@ -151,7 +159,7 @@ export function useProjects() {
 
   return {
     projects, addProject, updateProject, removeProject,
-    categories, addCategory, updateCategory, removeCategory,
+    categories, addCategory, updateCategory, removeCategory, moveCategory,
     loadFromArray, toArray, exportJSON, importJSON,
   }
 }

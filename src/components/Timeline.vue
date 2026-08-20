@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, nextTick } from 'vue'
-import { useElementBounding } from '@vueuse/core'
+import { useElementBounding, useEventListener } from '@vueuse/core'
 import {
   MONTH_COUNT, SUBDIVISIONS, LANE_HEIGHT, BAND_HEADER, BAND_GAP,
   TIMELINE_START_YEAR, TIMELINE_START_MONTH,
@@ -15,7 +15,7 @@ const props = defineProps({
   categories: { type: Array, default: () => [] },
   selectedId: { type: String, default: null },
 })
-const emit = defineEmits(['edit', 'remove', 'update', 'schedule', 'select', 'add-category', 'edit-category'])
+const emit = defineEmits(['edit', 'remove', 'update', 'schedule', 'select', 'add-category', 'edit-category', 'reorder-category'])
 
 // 月寬可縮放；內容總寬隨之變化，超出容器就橫向捲動
 const { monthWidth, totalWidth, zoomPercent, zoomAt, fitRange, reset } = useTimelineZoom()
@@ -145,6 +145,48 @@ function makeLaneResolver() {
   return (clientY) => resolveBandLane(snap, clientY - trackTop.value, LANE_HEIGHT, BAND_HEADER)
 }
 
+// 帶標題列拖曳排序：>4px 視為拖曳（否則放行 click 開編輯）
+const reorderDrag = ref(null)   // { id, targetId }
+let reorderMoved = false
+let reorderDownY = 0
+
+function onBandHeadDown(b, e) {
+  if (!b.editable) return
+  e.preventDefault()
+  reorderDrag.value = { id: b.id, targetId: null }
+  reorderMoved = false
+  reorderDownY = e.clientY
+}
+
+function bandAtY(clientY) {
+  const y = clientY - trackTop.value
+  return bands.value.find((b) => y >= b.top && y <= b.top + b.height) || null
+}
+
+useEventListener(window, 'pointermove', (e) => {
+  if (!reorderDrag.value) return
+  if (!reorderMoved && Math.abs(e.clientY - reorderDownY) > 4) reorderMoved = true
+  if (!reorderMoved) return
+  const over = bandAtY(e.clientY)
+  reorderDrag.value.targetId = over && over.id !== reorderDrag.value.id ? over.id : null
+})
+
+useEventListener(window, 'pointerup', () => {
+  const drag = reorderDrag.value
+  if (!drag) return
+  reorderDrag.value = null
+  if (!reorderMoved || drag.targetId === undefined) return
+  if (reorderMoved && drag.targetId !== null) {
+    const toIndex = props.categories.findIndex((c) => c.id === drag.targetId)
+    if (toIndex !== -1) emit('reorder-category', drag.id, toIndex)
+  }
+})
+
+function onBandNameClick(b) {
+  if (reorderMoved) return  // 拖曳結束的 click 不當編輯
+  if (b.editable) emit('edit-category', props.categories.find((c) => c.id === b.id))
+}
+
 // 從側欄拖入時高亮軌道，提示可放置
 const dropActive = ref(false)
 
@@ -251,6 +293,7 @@ defineExpose({ trackEl, monthWidth })
             v-for="b in bands"
             :key="b.id ?? 'uncat'"
             class="band"
+            :class="{ 'reorder-target': reorderDrag && reorderDrag.targetId === b.id }"
             :style="{
               top: b.top + 'px',
               height: b.height + 'px',
@@ -260,6 +303,11 @@ defineExpose({ trackEl, monthWidth })
           >
             <div
               class="band-head"
+              :class="{
+                grabbable: b.editable,
+                'reorder-source': reorderDrag && reorderDrag.id === b.id,
+              }"
+              @pointerdown="onBandHeadDown(b, $event)"
               :style="{
                 background: `color-mix(in srgb, ${b.color || 'var(--border-strong)'} 16%, transparent)`,
                 borderColor: `color-mix(in srgb, ${b.color || 'var(--border-strong)'} 45%, transparent)`,
@@ -270,7 +318,7 @@ defineExpose({ trackEl, monthWidth })
                 class="band-name"
                 :class="{ editable: b.editable }"
                 :style="b.color ? { color: b.color } : {}"
-                @click="b.editable && emit('edit-category', props.categories.find((c) => c.id === b.id))"
+                @click="onBandNameClick(b)"
               >{{ b.name }}</component>
             </div>
           </div>
@@ -304,7 +352,12 @@ defineExpose({ trackEl, monthWidth })
 </template>
 
 <style scoped>
-.timeline { font-family: var(--font-ui); position: relative; }
+.timeline {
+  font-family: var(--font-ui); position: relative;
+  height: 100%;
+  display: flex; flex-direction: column;
+}
+.zoom-controls, .add-category { flex: none; }
 
 .zoom-controls {
   display: flex; align-items: center; gap: var(--sp-1);
@@ -342,9 +395,9 @@ defineExpose({ trackEl, monthWidth })
   z-index: 7; pointer-events: none;
 }
 .scroll {
-  /* 垂直也在此捲動，表頭 sticky 才有效；限高避免把 DetailPanel 推出視野 */
+  /* 垂直也在此捲動（表頭 sticky）；flex:1 填滿剩餘視口高度 */
   overflow: auto;
-  max-height: calc(100vh - 230px);
+  flex: 1; min-height: 0;
   border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--surface); box-shadow: var(--shadow);
 }
@@ -415,7 +468,12 @@ defineExpose({ trackEl, monthWidth })
   height: 34.5px;         /* BAND_HEADER 36 - 上框線 */
   display: flex; align-items: center;
   border-bottom: 1px solid;
+  pointer-events: auto;   /* 拖曳排序；HTML5 drop 事件仍冒泡到 track */
+  touch-action: none;
 }
+.band-head.grabbable { cursor: grab; }
+.band-head.reorder-source { cursor: grabbing; opacity: .6; }
+.band.reorder-target { outline: 2px dashed var(--accent); outline-offset: 2px; }
 .band-name {
   position: sticky; left: 12px;
   display: inline-block;

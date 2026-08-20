@@ -184,3 +184,25 @@ describe('absolute date persistence', () => {
     expect(toArray().projects[0].startAbs).toBe(BASE + 1.5)
   })
 })
+
+describe('moveCategory', () => {
+  it('moves a category to a new index', () => {
+    const { categories, addCategory, moveCategory } = useProjects()
+    const a = addCategory({ name: 'A', color: '#111111' })
+    const b = addCategory({ name: 'B', color: '#222222' })
+    const c = addCategory({ name: 'C', color: '#333333' })
+    moveCategory(c.id, 0)
+    expect(categories.value.map(x => x.name)).toEqual(['C', 'A', 'B'])
+    moveCategory(a.id, 2)
+    expect(categories.value.map(x => x.name)).toEqual(['C', 'B', 'A'])
+  })
+
+  it('ignores unknown ids and clamps index', () => {
+    const { categories, addCategory, moveCategory } = useProjects()
+    const a = addCategory({ name: 'A', color: '#111111' })
+    addCategory({ name: 'B', color: '#222222' })
+    moveCategory('nope', 0)
+    moveCategory(a.id, 99)
+    expect(categories.value.map(x => x.name)).toEqual(['B', 'A'])
+  })
+})

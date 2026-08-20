@@ -12,7 +12,7 @@ import ToastStack from './components/ToastStack.vue'
 
 const {
   projects, addProject, updateProject, removeProject,
-  categories, addCategory, updateCategory, removeCategory,
+  categories, addCategory, updateCategory, removeCategory, moveCategory,
   exportJSON, importJSON,
 } = useProjects()
 
@@ -141,6 +141,7 @@ async function handleImport(file) {
       />
       <main class="main">
         <Timeline
+          class="timeline-fill"
           :projects="projects"
           :categories="categories"
           :selected-id="selectedId"
@@ -151,6 +152,7 @@ async function handleImport(file) {
           @update="updateProject"
           @schedule="schedule"
           @select="selectedId = $event"
+          @reorder-category="moveCategory"
         />
         <DetailPanel
           :project="selectedProject"
@@ -237,6 +239,13 @@ async function handleImport(file) {
   flex: 1;
   min-width: 0;              /* 允許 timeline 橫向捲動不撐破版面 */
   padding: var(--sp-5);
+  display: flex; flex-direction: column;
+  overflow: hidden;          /* 高度交給 timeline 內部捲動 */
+}
+.timeline-fill { flex: 1; min-height: 0; }
+.main > :deep(.detail) {
+  flex: none;
+  max-height: 38%;
   overflow: auto;
 }
 </style>
