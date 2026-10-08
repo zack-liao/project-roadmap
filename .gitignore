@@ -1,0 +1,10 @@
+node_modules
+dist
+*.local
+.DS_Store
+.claude/
+
+# 第三方 agent skill vendor 檔（由 skills-lock.json 重裝）
+.agents/
+.playwright-mcp/
+*.png

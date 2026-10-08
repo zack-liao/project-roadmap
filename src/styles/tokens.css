@@ -1,0 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+:root {
+  /* 色票：slate 深底 + teal 主色；amber 保留給「今日」，紅色只做危險操作 */
+  --bg: #0b1120;
+  --surface: #0f172a;
+  --surface-2: #1b2438;
+  --surface-3: #243049;
+  --border: #263149;
+  --border-strong: #364460;
+  --text: #e8edf6;
+  --muted: #94a3b8;
+  --faint: #64748b;
+
+  --accent: #2dd4bf;
+  --accent-strong: #14b8a6;
+  --accent-ink: #042f2e;        /* teal 鈕上的深色字 */
+  --accent-soft: rgba(45, 212, 191, .13);
+  --accent-border: rgba(45, 212, 191, .45);
+
+  --today: #f59e0b;
+  --today-soft: rgba(245, 158, 11, .14);
+  --danger: #f87171;
+  --danger-strong: #ef4444;
+  --danger-soft: rgba(248, 113, 113, .12);
+
+  /* 間距刻度（4 的倍數） */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* 圓角 */
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-xs: 5px;
+
+  /* 字型三役：display 標題 / body 內文 / mono 時間數據 */
+  --font-display: 'Space Grotesk', var(--font-ui);
+  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', 'Menlo', monospace;
+
+  --shadow: 0 1px 2px rgba(2, 6, 23, .5), 0 6px 16px rgba(2, 6, 23, .35);
+  --shadow-lg: 0 4px 8px rgba(2, 6, 23, .5), 0 16px 40px rgba(2, 6, 23, .45);
+
+  --ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+
+  --ease: cubic-bezier(.2, .7, .3, 1);
+  --dur: 160ms;
+}
+
+* {
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+html, body, #app { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 鍵盤操作一律有可見 focus ring */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-radius: var(--radius-xs);
+}
+
+::selection { background: var(--accent-soft); }
+
+/* 捲軸融入暗色介面 */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid var(--bg);
+}
+*::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
