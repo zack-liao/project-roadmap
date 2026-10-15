@@ -8,3 +8,13 @@ dist
 .agents/
 .playwright-mcp/
 *.png
+
+# wrangler 的本機狀態（含本機 D1 資料庫）
+.wrangler
+
+# 密鑰
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*

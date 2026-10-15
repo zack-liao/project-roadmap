@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useProjects } from './composables/useProjects.js'
 import ProjectModal from './components/ProjectModal.vue'
 import Timeline from './components/Timeline.vue'
@@ -13,7 +13,7 @@ import ToastStack from './components/ToastStack.vue'
 const {
   projects, addProject, updateProject, removeProject,
   categories, addCategory, updateCategory, removeCategory, moveCategory,
-  exportJSON, importJSON,
+  exportJSON, importJSON, syncError,
 } = useProjects()
 
 const modalOpen = ref(false)
@@ -33,6 +33,11 @@ function toast(type, text) {
     toasts.value = toasts.value.filter((t) => t.id !== id)
   }, 3200)
 }
+
+// 與 Worker 同步失敗時 useProjects 已經把畫面校正回伺服器狀態,這裡只負責告知
+watch(syncError, (message) => {
+  if (message) toast('error', message)
+})
 
 function openAdd() {
   editing.value = null

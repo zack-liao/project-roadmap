@@ -4,18 +4,25 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -k -n web,api -c cyan,magenta \"vite\" \"wrangler dev\"",
+    "dev:web": "vite",
+    "dev:api": "wrangler dev",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:migrate": "wrangler d1 migrations apply project-roadmap-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply project-roadmap-db --remote",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "vue": "^3.5.13",
-    "@vueuse/core": "^12.0.0"
+    "@vueuse/core": "^12.0.0",
+    "vue": "^3.5.13"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.1",
+    "concurrently": "^10.0.6",
     "vite": "^6.0.5",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "wrangler": "^4.151.0"
   }
 }
