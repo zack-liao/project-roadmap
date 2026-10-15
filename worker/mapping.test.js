@@ -13,7 +13,7 @@ describe('buildProjectCreate', () => {
       id: 'generated-id',
       columns: {
         name: '改版', summary: '', owner: '', stakeholder: '',
-        start_abs: null, duration: 1, lane: null, category_id: null,
+        start_abs: null, duration: 1, lane: null, category_id: null, image_key: null,
       },
     })
   })
@@ -87,7 +87,8 @@ describe('rowToProject', () => {
       created_by: 'sub-1', created_at: 'x', updated_at: 'y',
     })).toEqual({
       id: 'p1', name: '改版', summary: 's', owner: 'o', stakeholder: 'st',
-      startAbs: 24318, duration: 2, lane: 0, categoryId: 'c1', createdBy: 'sub-1',
+      startAbs: 24318, duration: 2, lane: 0, categoryId: 'c1',
+      imageKey: null, createdBy: 'sub-1',
     })
   })
 })

@@ -37,6 +37,19 @@ export async function updateProject(db, id, columns) {
   return row ? rowToProject(row) : null
 }
 
+// 換圖或刪專案時要知道原本那張是哪一個,才能把 R2 上的舊物件清掉
+export async function getProjectImageKey(db, id) {
+  const row = await db.prepare('SELECT image_key FROM projects WHERE id = ?').bind(id).first()
+  return row?.image_key ?? null
+}
+
+export async function allProjectImageKeys(db) {
+  const { results } = await db
+    .prepare('SELECT image_key FROM projects WHERE image_key IS NOT NULL')
+    .all()
+  return results.map((r) => r.image_key)
+}
+
 export async function deleteProject(db, id) {
   const { meta } = await db.prepare('DELETE FROM projects WHERE id = ?').bind(id).run()
   return meta.changes > 0

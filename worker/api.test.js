@@ -1,14 +1,19 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { handleApi } from './api.js'
 import { createFakeD1 } from './test/fake-d1.js'
+import { createFakeR2, imageBytes } from './test/fake-r2.js'
 
 let db
+let images
+let env
 
 // handleApi 收到的是已經通過驗證的使用者;驗證本身在 auth.test.js
 const USER = { id: 'google-sub-1', email: 'zack@hexschool.com', name: 'Zack', picture: '' }
 
 beforeEach(() => {
   db = createFakeD1()
+  images = createFakeR2()
+  env = { DB: db, IMAGES: images }
 })
 
 function call(method, path, body) {
@@ -17,7 +22,7 @@ function call(method, path, body) {
     init.body = typeof body === 'string' ? body : JSON.stringify(body)
     init.headers = { 'content-type': 'application/json' }
   }
-  return handleApi(new Request(`https://example.com${path}`, init), db, USER)
+  return handleApi(new Request(`https://example.com${path}`, init), env, USER)
 }
 
 async function state() {
@@ -126,7 +131,8 @@ describe('PUT /api/state', () => {
       categories: [{ id: 'c1', name: '平台', color: '#f00', createdBy: USER.id }],
       projects: [{
         id: 'p1', name: '匯入的', summary: '', owner: '', stakeholder: '',
-        startAbs: 24318, duration: 2, lane: null, categoryId: 'c1', createdBy: USER.id,
+        startAbs: 24318, duration: 2, lane: null, categoryId: 'c1',
+        imageKey: null, createdBy: USER.id,
       }],
     })
   })
@@ -195,12 +201,156 @@ describe('資料出處', () => {
         body: JSON.stringify({ name: '別人建的' }),
         headers: { 'content-type': 'application/json' },
       }),
-      db,
+      env,
       { id: 'google-sub-2', email: 'other@hexschool.com' },
     )
 
     const after = await state()
     expect(after.projects.map((p) => p.name)).toEqual(['我建的', '別人建的'])
     expect(after.projects.map((p) => p.createdBy)).toEqual(['google-sub-1', 'google-sub-2'])
+  })
+})
+
+
+// 上傳一張圖並回傳它的 key
+async function uploadImage(type = 'image/png') {
+  const res = await handleApi(
+    new Request('https://example.com/api/images', {
+      method: 'POST',
+      body: imageBytes(type),
+      headers: { 'content-type': type },
+    }),
+    env,
+    USER,
+  )
+  return { res, body: await res.clone().json().catch(() => null) }
+}
+
+describe('封面圖', () => {
+  it('上傳回 201 與一個 key,圖進了 bucket', async () => {
+    const { res, body } = await uploadImage()
+    expect(res.status).toBe(201)
+    expect(body.key).toMatch(/^[0-9a-f-]{36}\.png$/)
+    expect(images.keys()).toEqual([body.key])
+  })
+
+  it('取回時帶正確的 content-type,且不讓瀏覽器自行嗅探', async () => {
+    const { body } = await uploadImage('image/jpeg')
+    const res = await call('GET', `/api/images/${body.key}`)
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('image/jpeg')
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(res.headers.get('cache-control')).toMatch(/private/)
+  })
+
+  it('不存在的 key 回 404', async () => {
+    expect((await call('GET', '/api/images/00000000-0000-0000-0000-000000000000.png')).status).toBe(404)
+  })
+
+  it('亂寫的 key 回 404,不會被當成 R2 路徑去查', async () => {
+    for (const key of ['..%2F..%2Fsecret', 'notakey', 'x.png']) {
+      expect((await call('GET', `/api/images/${key}`)).status).toBe(404)
+    }
+  })
+
+  it('不支援的格式回 415', async () => {
+    const res = await handleApi(
+      new Request('https://example.com/api/images', {
+        method: 'POST', body: new Uint8Array(32), headers: { 'content-type': 'image/svg+xml' },
+      }), env, USER,
+    )
+    expect(res.status).toBe(415)
+    expect(images.count()).toBe(0)
+  })
+
+  it('副檔名宣稱 PNG 但內容是 JPEG 時回 415', async () => {
+    const res = await handleApi(
+      new Request('https://example.com/api/images', {
+        method: 'POST', body: imageBytes('image/jpeg'), headers: { 'content-type': 'image/png' },
+      }), env, USER,
+    )
+    expect(res.status).toBe(415)
+    expect(images.count()).toBe(0)
+  })
+
+  it('空內容回 400', async () => {
+    const res = await handleApi(
+      new Request('https://example.com/api/images', {
+        method: 'POST', body: new Uint8Array(0), headers: { 'content-type': 'image/png' },
+      }), env, USER,
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it('專案可以指向上傳好的圖', async () => {
+    const { body } = await uploadImage()
+    const created = await (await newProject({ name: '改版', imageKey: body.key })).json()
+    expect(created.imageKey).toBe(body.key)
+  })
+
+  it('不接受不是我們發出去的 key', async () => {
+    const res = await newProject({ name: '改版', imageKey: '../../etc/passwd' })
+    expect(res.status).toBe(400)
+  })
+
+  it('換圖時舊的那張會從 bucket 清掉', async () => {
+    const first = (await uploadImage()).body.key
+    const second = (await uploadImage()).body.key
+    const { id } = await (await newProject({ name: '改版', imageKey: first })).json()
+
+    await call('PATCH', `/api/projects/${id}`, { imageKey: second })
+
+    expect(images.keys()).toEqual([second])
+  })
+
+  it('同一張圖再存一次不會被誤刪', async () => {
+    const key = (await uploadImage()).body.key
+    const { id } = await (await newProject({ name: '改版', imageKey: key })).json()
+
+    await call('PATCH', `/api/projects/${id}`, { imageKey: key })
+
+    expect(images.keys()).toEqual([key])
+  })
+
+  it('改別的欄位不會動到圖', async () => {
+    const key = (await uploadImage()).body.key
+    const { id } = await (await newProject({ name: '改版', imageKey: key })).json()
+
+    await call('PATCH', `/api/projects/${id}`, { duration: 3 })
+
+    expect(images.keys()).toEqual([key])
+  })
+
+  it('把圖設成 null 會清掉 bucket 裡那張', async () => {
+    const key = (await uploadImage()).body.key
+    const { id } = await (await newProject({ name: '改版', imageKey: key })).json()
+
+    await call('PATCH', `/api/projects/${id}`, { imageKey: null })
+
+    expect(images.count()).toBe(0)
+  })
+
+  it('刪專案會一併刪掉它的圖', async () => {
+    const key = (await uploadImage()).body.key
+    const { id } = await (await newProject({ name: '改版', imageKey: key })).json()
+
+    await call('DELETE', `/api/projects/${id}`)
+
+    expect(images.count()).toBe(0)
+  })
+
+  it('匯入覆寫後,不再被引用的圖會清掉,還被引用的留著', async () => {
+    const kept = (await uploadImage()).body.key
+    const dropped = (await uploadImage()).body.key
+    await newProject({ name: '留著', imageKey: kept })
+    await newProject({ name: '要被蓋掉', imageKey: dropped })
+
+    await call('PUT', '/api/state', {
+      categories: [],
+      projects: [{ id: 'p1', name: '匯入的', imageKey: kept }],
+    })
+
+    expect(images.keys()).toEqual([kept])
   })
 })

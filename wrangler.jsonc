@@ -12,6 +12,13 @@
 	"observability": {
 		"enabled": true
 	},
+	// 封面圖。bucket 不開公開網域,只透過 Worker 驗證後供應
+	"r2_buckets": [
+		{
+			"binding": "IMAGES",
+			"bucket_name": "project-roadmap-images"
+		}
+	],
 	"d1_databases": [
 		{
 			"binding": "DB",

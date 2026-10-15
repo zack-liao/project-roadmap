@@ -23,6 +23,6 @@ export default {
       return error(401, '登入驗證失敗')
     }
 
-    return handleApi(request, env.DB, user)
+    return handleApi(request, env, user)
   },
 }

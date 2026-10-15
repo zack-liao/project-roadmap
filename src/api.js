@@ -4,16 +4,23 @@ const BASE = '/api'
 // getToken 提供目前的 Google ID token;onUnauthorized 在 401 時被呼叫,
 // 由上層決定要怎麼請使用者重新登入。
 export function createApiClient({ getToken = () => null, onUnauthorized = () => {} } = {}) {
-  async function request(method, path, body) {
-    const headers = {}
+  function authHeaders() {
     const token = getToken()
-    if (token) headers.authorization = `Bearer ${token}`
-    if (body !== undefined) headers['content-type'] = 'application/json'
+    return token ? { authorization: `Bearer ${token}` } : {}
+  }
+
+  async function request(method, path, body) {
+    const headers = authHeaders()
+
+    // Blob / File 原樣送出(圖片上傳),其餘序列化成 JSON
+    const isBinary = typeof Blob !== 'undefined' && body instanceof Blob
+    if (isBinary) headers['content-type'] = body.type
+    else if (body !== undefined) headers['content-type'] = 'application/json'
 
     const res = await fetch(BASE + path, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : (isBinary ? body : JSON.stringify(body)),
     })
 
     if (!res.ok) {
@@ -45,5 +52,22 @@ export function createApiClient({ getToken = () => null, onUnauthorized = () => 
     patchCategory: (id, patch) => request('PATCH', `/categories/${encodeURIComponent(id)}`, patch),
     deleteCategory: (id) => request('DELETE', `/categories/${encodeURIComponent(id)}`),
     reorderCategories: (ids) => request('PUT', '/categories/order', { ids }),
+
+    // 圖片直接以原始 bytes 送出,content-type 就是檔案本身的型別。
+    // 不走 multipart:後端只需要一個檔案,省掉解析表單的那一層。
+    uploadImage: (file) => request('POST', '/images', file),
+
+    // 圖片是登入後才拿得到的內容,<img src> 沒辦法帶 Authorization 標頭,
+    // 所以得自己 fetch 成 blob 再轉 object URL。
+    async imageBlob(key) {
+      const res = await fetch(`${BASE}/images/${encodeURIComponent(key)}`, {
+        headers: authHeaders(),
+      })
+      if (!res.ok) {
+        if (res.status === 401) onUnauthorized('登入已過期,請重新登入')
+        throw new Error(`圖片載入失敗(${res.status})`)
+      }
+      return res.blob()
+    },
   }
 }

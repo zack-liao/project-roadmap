@@ -1,5 +1,6 @@
 // D1 資料列 <-> API JSON 的轉換與欄位驗證。純函式，不碰 D1，單元測試直接打這裡。
 import { badRequest } from './http.js'
+import { isValidImageKey } from './images.js'
 
 function asString(key, v) {
   if (typeof v !== 'string') throw badRequest(`${key} 必須是字串`)
@@ -23,6 +24,13 @@ function asNullableInt(key, v) {
   return v
 }
 
+// 只收我們自己發出去的 key 形狀,前端不能指定任意的 R2 物件路徑
+function asNullableImageKey(key, v) {
+  if (v === null || v === undefined) return null
+  if (!isValidImageKey(v)) throw badRequest(`${key} 不是有效的圖片 key`)
+  return v
+}
+
 function asNullableId(key, v) {
   if (v === null || v === undefined) return null
   if (typeof v !== 'string' || v === '') throw badRequest(`${key} 必須是非空字串或 null`)
@@ -39,6 +47,7 @@ const PROJECT_FIELDS = {
   duration: { column: 'duration', parse: asPositiveInt, fallback: 1 },
   lane: { column: 'lane', parse: asNullableInt, fallback: null },
   categoryId: { column: 'category_id', parse: asNullableId, fallback: null },
+  imageKey: { column: 'image_key', parse: asNullableImageKey, fallback: null },
 }
 
 const CATEGORY_FIELDS = {
@@ -99,6 +108,7 @@ export function rowToProject(row) {
     duration: row.duration,
     lane: row.lane,
     categoryId: row.category_id,
+    imageKey: row.image_key ?? null,
     createdBy: row.created_by ?? null,
   }
 }

@@ -139,6 +139,7 @@ export function useProjects(client) {
       duration: 1,
       lane: null,
       categoryId: null,
+      imageKey: fields.imageKey ?? null,
     }
     projects.value.push(p)
     // id 由前端產生並一起送出,後端沿用,樂觀更新才不需要事後換 id

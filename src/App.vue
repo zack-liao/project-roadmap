@@ -3,6 +3,7 @@ import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useProjects } from './composables/useProjects.js'
 import { useAuth } from './composables/useAuth.js'
 import { createApiClient } from './api.js'
+import { createImageCache } from './composables/useImageCache.js'
 import ProjectModal from './components/ProjectModal.vue'
 import Timeline from './components/Timeline.vue'
 import ProjectList from './components/ProjectList.vue'
@@ -25,6 +26,7 @@ const api = createApiClient({
 })
 
 const store = useProjects(api)
+const imageCache = createImageCache(api)
 const {
   projects, addProject, updateProject, removeProject,
   categories, addCategory, updateCategory, removeCategory, moveCategory,
@@ -36,8 +38,13 @@ const signInEl = ref(null)
 
 // 登入後才去讀資料;登出就把畫面清掉
 watch(auth.signedIn, (yes) => {
-  if (yes) store.start()
-  else store.reset()
+  if (yes) {
+    store.start()
+  } else {
+    store.reset()
+    // 不把上一個人的圖留在記憶體裡
+    imageCache.clear()
+  }
 }, { immediate: true })
 
 // 登出後登入畫面是重新建立的,按鈕要再畫一次。
@@ -85,12 +92,25 @@ function openEdit(project) {
   editing.value = project
   modalOpen.value = true
 }
-function handleSave(fields) {
+async function handleSave(fields) {
+  const { imageFile, ...rest } = fields
+
+  // 圖片在這裡才上傳。取消編輯不會送出任何東西,也就不會在 R2 留下沒人引用的檔案。
+  if (imageFile) {
+    try {
+      const { key } = await api.uploadImage(imageFile)
+      rest.imageKey = key
+    } catch (err) {
+      toast('error', `圖片上傳失敗：${err.message}`)
+      return
+    }
+  }
+
   if (editing.value) {
-    updateProject(editing.value.id, fields)
+    updateProject(editing.value.id, rest)
     toast('success', '已更新')
   } else {
-    addProject(fields)  // 新增後留在「未排程」，等使用者拖進 timeline
+    addProject(rest)  // 新增後留在「未排程」，等使用者拖進 timeline
     toast('success', '已新增，拖曳卡片到時間軸排程')
   }
   modalOpen.value = false
@@ -243,6 +263,7 @@ async function handleImport(file) {
         />
         <DetailPanel
           :project="selectedProject"
+          :image-cache="imageCache"
           @edit="openEdit"
           @remove="handleRemove"
           @close="selectedId = null"
@@ -254,6 +275,7 @@ async function handleImport(file) {
   <ProjectModal
     :open="modalOpen"
     :project="editing"
+    :image-cache="imageCache"
     @save="handleSave"
     @close="modalOpen = false"
   />
