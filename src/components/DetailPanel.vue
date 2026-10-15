@@ -3,9 +3,11 @@ import { computed } from 'vue'
 import { TIMELINE_START_YEAR, TIMELINE_START_MONTH } from '../constants.js'
 import { formatYearMonth } from '../composables/calendar.js'
 import AppIcon from './AppIcon.vue'
+import { useImageSrc } from '../composables/useImageCache.js'
 
 const props = defineProps({
   project: { type: Object, default: null },
+  imageCache: { type: Object, required: true },
 })
 const emit = defineEmits(['edit', 'remove', 'close'])
 
@@ -21,6 +23,9 @@ const endLabel = computed(() =>
 const durationLabel = computed(() =>
   props.project ? `${props.project.duration} 個月` : ''
 )
+
+// 封面圖要帶通行證才拿得到,所以不是直接把網址塞進 <img src>
+const cover = useImageSrc(props.imageCache, () => props.project?.imageKey ?? null)
 </script>
 
 <template>
@@ -43,6 +48,12 @@ const durationLabel = computed(() =>
           </button>
         </div>
       </div>
+
+      <figure v-if="project.imageKey" class="cover">
+        <img v-if="cover.src.value" :src="cover.src.value" :alt="`${project.name} 的封面`" />
+        <div v-else-if="cover.error.value" class="cover-fallback">{{ cover.error.value }}</div>
+        <div v-else class="cover-fallback">載入中…</div>
+      </figure>
 
       <div class="grid">
         <div class="field">
@@ -71,6 +82,21 @@ const durationLabel = computed(() =>
 </template>
 
 <style scoped>
+.cover { margin: 0 0 var(--sp-3); }
+.cover img {
+  display: block;
+  width: 100%; max-height: 180px; object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.cover-fallback {
+  display: flex; align-items: center; justify-content: center;
+  height: 88px;
+  font-size: 12px; color: var(--faint);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
 .detail {
   margin-top: var(--sp-5);
   background: var(--surface);

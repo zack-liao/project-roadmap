@@ -1,208 +1,442 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { useProjects } from './useProjects.js'
 
-// 在 node 環境模擬 localStorage
+// 時間軸起點 2026-07 → BASE = 2026*12 + 6
+const BASE = 2026 * 12 + 6
+
 beforeEach(() => {
-  const store = {}
-  vi.stubGlobal('localStorage', {
-    getItem: (k) => (k in store ? store[k] : null),
-    setItem: (k, v) => { store[k] = String(v) },
-    removeItem: (k) => { delete store[k] },
-  })
-  // 模擬 crypto.randomUUID
   let n = 0
   vi.stubGlobal('crypto', { randomUUID: () => `id-${++n}` })
 })
 
-import { useProjects } from './useProjects.js'
-import { nextTick } from 'vue'
+// 行為比照 Worker:保存整份 state,回傳 API 形狀(startAbs、categoryId)的資料
+function createFakeClient(initial = { categories: [], projects: [] }) {
+  const state = structuredClone(initial)
+  const calls = []
+  const fail = new Map()
 
-describe('useProjects', () => {
-  it('adds a project with generated id and defaults', () => {
-    const { projects, addProject } = useProjects()
-    const p = addProject({ name: 'A', summary: 's', owner: 'o', stakeholder: 'k' })
+  function record(name, ...args) {
+    calls.push({ name, args })
+    if (fail.has(name)) throw new Error(fail.get(name))
+  }
+
+  return {
+    calls,
+    state,
+    failOn: (name, message) => fail.set(name, message),
+    // 測試要直接改伺服器端狀態,模擬「本地樂觀更新與伺服器不一致」
+    serverState: state,
+
+    async getState() {
+      record('getState')
+      return structuredClone(state)
+    },
+    async replaceState(next) {
+      record('replaceState', next)
+      state.categories = structuredClone(next.categories)
+      state.projects = structuredClone(next.projects)
+      return structuredClone(state)
+    },
+    async createProject(p) {
+      record('createProject', p)
+      state.projects.push(structuredClone(p))
+      return structuredClone(p)
+    },
+    async patchProject(id, patch) {
+      record('patchProject', id, patch)
+      const p = state.projects.find((x) => x.id === id)
+      Object.assign(p, structuredClone(patch))
+      return structuredClone(p)
+    },
+    async deleteProject(id) {
+      record('deleteProject', id)
+      state.projects = state.projects.filter((x) => x.id !== id)
+      return null
+    },
+    async createCategory(c) {
+      record('createCategory', c)
+      state.categories.push(structuredClone(c))
+      return structuredClone(c)
+    },
+    async patchCategory(id, patch) {
+      record('patchCategory', id, patch)
+      const c = state.categories.find((x) => x.id === id)
+      Object.assign(c, structuredClone(patch))
+      return structuredClone(c)
+    },
+    async deleteCategory(id) {
+      record('deleteCategory', id)
+      state.categories = state.categories.filter((x) => x.id !== id)
+      for (const p of state.projects) if (p.categoryId === id) p.categoryId = null
+      return null
+    },
+    async reorderCategories(ids) {
+      record('reorderCategories', ids)
+      state.categories.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
+      return structuredClone(state)
+    },
+  }
+}
+
+const callNames = (client) => client.calls.map((c) => c.name)
+const lastCall = (client, name) => [...client.calls].reverse().find((c) => c.name === name)
+
+async function setup(initial) {
+  const client = createFakeClient(initial)
+  const store = useProjects(client)
+  await store.start()
+  return { client, store }
+}
+
+describe('初次載入', () => {
+  it('啟動時向 /api/state 取資料,不再讀 localStorage', async () => {
+    const { client, store } = await setup()
+    expect(callNames(client)).toEqual(['getState'])
+    expect(store.ready.value).toBe(true)
+  })
+
+  it('把 startAbs 換算回目前起點的相對 startMonth', async () => {
+    const { store } = await setup({
+      categories: [{ id: 'c1', name: '官網', color: '#60a5fa' }],
+      projects: [{ id: 'x', name: 'A', startAbs: BASE + 5, duration: 2, lane: 0, categoryId: 'c1' }],
+    })
+    expect(store.projects.value[0].startMonth).toBe(5)
+    expect(store.categories.value).toHaveLength(1)
+  })
+
+  it('未排程的專案 startAbs null 載入成 startMonth null', async () => {
+    const { store } = await setup({ categories: [], projects: [{ id: 'x', name: 'A', startAbs: null }] })
+    expect(store.projects.value[0].startMonth).toBe(null)
+  })
+
+  it('載入失敗時記錄錯誤而不是整個炸掉', async () => {
+    const client = createFakeClient()
+    client.failOn('getState', '連不上')
+    const store = useProjects(client)
+    await store.start()
+    expect(store.syncError.value).toMatch(/連不上/)
+    expect(store.projects.value).toEqual([])
+  })
+})
+
+describe('專案', () => {
+  it('新增時本地立刻出現,並以同一個 id 送出 POST', async () => {
+    const { client, store } = await setup()
+    const p = store.addProject({ name: 'A', summary: 's', owner: 'o', stakeholder: 'k' })
+
     expect(p.id).toBe('id-1')
     expect(p.startMonth).toBe(null)
     expect(p.duration).toBe(1)
-    expect(p.lane).toBe(null)
-    expect(projects.value).toHaveLength(1)
+    expect(store.projects.value).toHaveLength(1)
+
+    await store.settled()
+    expect(lastCall(client, 'createProject').args[0]).toMatchObject({ id: 'id-1', name: 'A', startAbs: null })
   })
 
-  it('updates a project by id (shallow merge)', () => {
-    const { projects, addProject, updateProject } = useProjects()
-    const p = addProject({ name: 'A', summary: '', owner: '', stakeholder: '' })
-    updateProject(p.id, { startMonth: 3, duration: 2, lane: 0 })
-    expect(projects.value[0].startMonth).toBe(3)
-    expect(projects.value[0].name).toBe('A')
+  it('更新是淺層合併,未帶到的欄位保留', async () => {
+    const { store } = await setup()
+    const p = store.addProject({ name: 'A' })
+    store.updateProject(p.id, { startMonth: 3, duration: 2, lane: 0 })
+
+    expect(store.projects.value[0].startMonth).toBe(3)
+    expect(store.projects.value[0].name).toBe('A')
   })
 
-  it('removes a project by id', () => {
-    const { projects, addProject, removeProject } = useProjects()
-    const p = addProject({ name: 'A', summary: '', owner: '', stakeholder: '' })
-    removeProject(p.id)
-    expect(projects.value).toHaveLength(0)
+  it('送出的 PATCH 用絕對座標 startAbs', async () => {
+    const { client, store } = await setup()
+    const p = store.addProject({ name: 'A' })
+    store.updateProject(p.id, { startMonth: 3.25, lane: 0 })
+    await store.settled()
+
+    expect(lastCall(client, 'patchProject').args[1]).toEqual({ startAbs: BASE + 3.25, lane: 0 })
   })
 
-  it('persists to localStorage on change', async () => {
-    const { addProject } = useProjects()
-    addProject({ name: 'A', summary: '', owner: '', stakeholder: '' })
-    await nextTick()
-    const saved = JSON.parse(localStorage.getItem('roadmap.projects'))
-    expect(saved.projects).toHaveLength(1)
-    expect(saved.projects[0].name).toBe('A')
-    expect(saved.categories).toEqual([])
+  it('patch 沒帶 startMonth 時不送 startAbs,免得把排程清掉', async () => {
+    const { client, store } = await setup({
+      categories: [], projects: [{ id: 'x', name: 'A', startAbs: BASE + 5, duration: 2, lane: 0 }],
+    })
+    store.updateProject('x', { duration: 3 })
+    await store.settled()
+
+    expect(lastCall(client, 'patchProject').args[1]).toEqual({ duration: 3 })
+    expect(client.serverState.projects[0].startAbs).toBe(BASE + 5)
   })
 
-  it('loadFromArray replaces the whole list', () => {
-    const { projects, loadFromArray } = useProjects()
-    loadFromArray([{ id: 'x', name: 'X', summary: '', owner: '', stakeholder: '', startMonth: 0, duration: 1, lane: 0 }])
-    expect(projects.value).toHaveLength(1)
-    expect(projects.value[0].id).toBe('x')
-  })
-})
+  it('拖曳造成的連續更新合併成一次 PATCH', async () => {
+    const { client, store } = await setup()
+    const p = store.addProject({ name: 'A' })
+    for (let m = 0; m < 10; m++) store.updateProject(p.id, { startMonth: m, lane: 0 })
+    await store.settled()
 
-describe('categories', () => {
-  it('starts empty and adds a category with id, name, color', () => {
-    const { categories, addCategory } = useProjects()
-    expect(categories.value).toEqual([])
-    const c = addCategory({ name: '官網', color: '#60a5fa' })
-    expect(c.id).toBeTruthy()
-    expect(categories.value).toEqual([{ id: c.id, name: '官網', color: '#60a5fa' }])
+    expect(client.calls.filter((c) => c.name === 'patchProject')).toHaveLength(1)
+    expect(lastCall(client, 'patchProject').args[1]).toEqual({ startAbs: BASE + 9, lane: 0 })
   })
 
-  it('updates a category by id', () => {
-    const { categories, addCategory, updateCategory } = useProjects()
-    const c = addCategory({ name: '官網', color: '#60a5fa' })
-    updateCategory(c.id, { name: '官網 2.0', color: '#34d399' })
-    expect(categories.value[0]).toEqual({ id: c.id, name: '官網 2.0', color: '#34d399' })
+  it('刪除後本地消失,並送出 DELETE', async () => {
+    const { client, store } = await setup()
+    const p = store.addProject({ name: 'A' })
+    store.removeProject(p.id)
+    await store.settled()
+
+    expect(store.projects.value).toHaveLength(0)
+    expect(client.serverState.projects).toHaveLength(0)
   })
 
-  it('removing a category moves its projects to uncategorized (categoryId null)', () => {
-    const { addCategory, removeCategory, addProject, projects } = useProjects()
-    const c = addCategory({ name: '官網', color: '#60a5fa' })
-    const p = addProject({ name: 'A' })
-    p.categoryId = c.id
-    removeCategory(c.id)
-    expect(projects.value[0].categoryId).toBe(null)
-    expect(projects.value).toHaveLength(1)
+  it('刪除排在更新之後送出,不會對已刪除的資料下 PATCH', async () => {
+    const { client, store } = await setup()
+    const p = store.addProject({ name: 'A' })
+    store.updateProject(p.id, { duration: 4 })
+    store.removeProject(p.id)
+    await store.settled()
+
+    expect(callNames(client)).toEqual(['getState', 'createProject', 'patchProject', 'deleteProject'])
   })
 
-  it('new projects default to categoryId null', () => {
-    const { addProject } = useProjects()
-    expect(addProject({ name: 'A' }).categoryId).toBe(null)
-  })
-
-  it('loads legacy array storage as projects with no categories', () => {
-    localStorage.setItem('roadmap.projects', JSON.stringify([
-      { id: 'x', name: 'Old', startMonth: 1, duration: 2, lane: 0 },
-    ]))
-    const { projects, categories } = useProjects()
-    expect(projects.value).toHaveLength(1)
-    expect(projects.value[0].categoryId).toBe(null)
-    expect(categories.value).toEqual([])
-  })
-
-  it('loads object storage with categories and projects', () => {
-    localStorage.setItem('roadmap.projects', JSON.stringify({
-      categories: [{ id: 'c1', name: '官網', color: '#60a5fa' }],
-      projects: [{ id: 'x', name: 'A', categoryId: 'c1' }],
-    }))
-    const { projects, categories } = useProjects()
-    expect(categories.value).toHaveLength(1)
-    expect(projects.value[0].categoryId).toBe('c1')
-  })
-
-  it('loadFromArray accepts legacy array payload', () => {
-    const { loadFromArray, projects, categories } = useProjects()
-    loadFromArray([{ id: 'x', name: 'A' }])
-    expect(projects.value).toHaveLength(1)
-    expect(categories.value).toEqual([])
-  })
-
-  it('loadFromArray accepts {categories, projects} payload', () => {
-    const { loadFromArray, projects, categories } = useProjects()
-    loadFromArray({ categories: [{ id: 'c1', name: '官網', color: '#60a5fa' }], projects: [{ id: 'x', name: 'A', categoryId: 'c1' }] })
-    expect(categories.value).toHaveLength(1)
-    expect(projects.value[0].categoryId).toBe('c1')
+  it('更新不存在的 id 不會送出任何請求', async () => {
+    const { client, store } = await setup()
+    store.updateProject('nope', { duration: 2 })
+    await store.settled()
+    expect(callNames(client)).toEqual(['getState'])
   })
 })
 
-describe('absolute date persistence', () => {
-  // 時間軸起點 2026-07 → BASE = 2026*12 + 6
-  const BASE = 2026 * 12 + 6
+describe('類別', () => {
+  it('新增後本地立刻出現並送出 POST', async () => {
+    const { client, store } = await setup()
+    const c = store.addCategory({ name: '官網', color: '#60a5fa' })
+    await store.settled()
 
-  it('persists startAbs (absolute month) instead of relative startMonth', async () => {
-    const { addProject, updateProject } = useProjects()
-    const p = addProject({ name: 'A' })
-    updateProject(p.id, { startMonth: 3.25, lane: 0 })
-    await nextTick()
-    const saved = JSON.parse(localStorage.getItem('roadmap.projects'))
-    expect(saved.projects[0].startAbs).toBe(BASE + 3.25)
-    expect(saved.projects[0].startMonth).toBeUndefined()
+    expect(store.categories.value).toEqual([{ id: c.id, name: '官網', color: '#60a5fa' }])
+    expect(lastCall(client, 'createCategory').args[0]).toEqual({ id: c.id, name: '官網', color: '#60a5fa' })
   })
 
-  it('unscheduled projects persist startAbs null', async () => {
-    const { addProject } = useProjects()
-    addProject({ name: 'A' })
-    await nextTick()
-    const saved = JSON.parse(localStorage.getItem('roadmap.projects'))
-    expect(saved.projects[0].startAbs).toBe(null)
+  it('更新類別', async () => {
+    const { store } = await setup()
+    const c = store.addCategory({ name: '官網', color: '#60a5fa' })
+    store.updateCategory(c.id, { name: '官網 2.0', color: '#34d399' })
+
+    expect(store.categories.value[0]).toEqual({ id: c.id, name: '官網 2.0', color: '#34d399' })
   })
 
-  it('loads startAbs back into the current origin offset', () => {
-    localStorage.setItem('roadmap.projects', JSON.stringify({
-      categories: [],
-      projects: [{ id: 'x', name: 'A', startAbs: BASE + 5, duration: 2, lane: 0 }],
-    }))
-    const { projects } = useProjects()
-    expect(projects.value[0].startMonth).toBe(5)
+  it('刪除類別時底下的專案留著,categoryId 清成 null', async () => {
+    const { client, store } = await setup()
+    const c = store.addCategory({ name: '官網' })
+    const p = store.addProject({ name: 'A' })
+    store.updateProject(p.id, { categoryId: c.id })
+    store.removeCategory(c.id)
+    await store.settled()
+
+    expect(store.projects.value).toHaveLength(1)
+    expect(store.projects.value[0].categoryId).toBe(null)
+    expect(client.serverState.projects[0].categoryId).toBe(null)
   })
 
-  it('startAbs survives a save/load round trip unchanged', async () => {
-    localStorage.setItem('roadmap.projects', JSON.stringify({
-      categories: [],
-      projects: [{ id: 'x', name: 'A', startAbs: BASE + 5, duration: 2, lane: 0 }],
-    }))
-    const first = useProjects()
-    first.updateProject('x', { duration: 3 })  // 觸發存檔，但沒動時間
-    await nextTick()
-    const saved = JSON.parse(localStorage.getItem('roadmap.projects'))
-    expect(saved.projects[0].startAbs).toBe(BASE + 5)
-  })
-
-  it('legacy data with only startMonth still loads as offset', () => {
-    localStorage.setItem('roadmap.projects', JSON.stringify([
-      { id: 'x', name: 'Old', startMonth: 2, duration: 1, lane: 0 },
-    ]))
-    const { projects } = useProjects()
-    expect(projects.value[0].startMonth).toBe(2)
-  })
-
-  it('export payload carries startAbs', () => {
-    const { addProject, updateProject, toArray } = useProjects()
-    const p = addProject({ name: 'A' })
-    updateProject(p.id, { startMonth: 1.5, lane: 0 })
-    expect(toArray().projects[0].startAbs).toBe(BASE + 1.5)
+  it('新專案預設沒有類別', async () => {
+    const { store } = await setup()
+    expect(store.addProject({ name: 'A' }).categoryId).toBe(null)
   })
 })
 
 describe('moveCategory', () => {
-  it('moves a category to a new index', () => {
-    const { categories, addCategory, moveCategory } = useProjects()
-    const a = addCategory({ name: 'A', color: '#111111' })
-    const b = addCategory({ name: 'B', color: '#222222' })
-    const c = addCategory({ name: 'C', color: '#333333' })
-    moveCategory(c.id, 0)
-    expect(categories.value.map(x => x.name)).toEqual(['C', 'A', 'B'])
-    moveCategory(a.id, 2)
-    expect(categories.value.map(x => x.name)).toEqual(['C', 'B', 'A'])
+  it('搬到新位置後把整串新順序送給後端', async () => {
+    const { client, store } = await setup()
+    const a = store.addCategory({ name: 'A' })
+    const b = store.addCategory({ name: 'B' })
+    const c = store.addCategory({ name: 'C' })
+
+    store.moveCategory(c.id, 0)
+    expect(store.categories.value.map((x) => x.name)).toEqual(['C', 'A', 'B'])
+
+    store.moveCategory(a.id, 2)
+    expect(store.categories.value.map((x) => x.name)).toEqual(['C', 'B', 'A'])
+
+    await store.settled()
+    expect(lastCall(client, 'reorderCategories').args[0]).toEqual([c.id, b.id, a.id])
+    expect(client.serverState.categories.map((x) => x.name)).toEqual(['C', 'B', 'A'])
   })
 
-  it('ignores unknown ids and clamps index', () => {
-    const { categories, addCategory, moveCategory } = useProjects()
-    const a = addCategory({ name: 'A', color: '#111111' })
-    addCategory({ name: 'B', color: '#222222' })
-    moveCategory('nope', 0)
-    moveCategory(a.id, 99)
-    expect(categories.value.map(x => x.name)).toEqual(['B', 'A'])
+  it('未知 id 不動,index 會被夾在範圍內', async () => {
+    const { client, store } = await setup()
+    const a = store.addCategory({ name: 'A' })
+    store.addCategory({ name: 'B' })
+
+    store.moveCategory('nope', 0)
+    store.moveCategory(a.id, 99)
+
+    expect(store.categories.value.map((x) => x.name)).toEqual(['B', 'A'])
+    await store.settled()
+    expect(client.calls.filter((c) => c.name === 'reorderCategories')).toHaveLength(1)
+  })
+})
+
+describe('同步失敗', () => {
+  it('寫入失敗時顯示錯誤,並重新載入回伺服器的真實狀態', async () => {
+    const { client, store } = await setup({
+      categories: [], projects: [{ id: 'x', name: 'A', startAbs: BASE + 5, duration: 2, lane: 0 }],
+    })
+    client.failOn('patchProject', '伺服器錯誤')
+
+    store.updateProject('x', { duration: 9 })
+    expect(store.projects.value[0].duration).toBe(9)   // 樂觀更新先畫上去
+
+    await store.settled()
+    expect(store.syncError.value).toMatch(/伺服器錯誤/)
+    expect(store.projects.value[0].duration).toBe(2)   // 再被伺服器狀態校正回來
+  })
+})
+
+describe('匯出 / 匯入', () => {
+  const asFile = (data) => ({ text: async () => JSON.stringify(data) })
+
+  it('匯出的內容帶絕對座標 startAbs', async () => {
+    const { store } = await setup()
+    const p = store.addProject({ name: 'A' })
+    store.updateProject(p.id, { startMonth: 1.5, lane: 0 })
+
+    expect(store.toArray().projects[0].startAbs).toBe(BASE + 1.5)
+    expect(store.toArray().projects[0].startMonth).toBeUndefined()
+  })
+
+  it('匯入整包覆寫後端,回傳筆數', async () => {
+    const { client, store } = await setup()
+    const count = await store.importJSON(asFile({
+      categories: [{ id: 'c1', name: '官網', color: '#f00' }],
+      projects: [{ id: 'x', name: 'A', startAbs: BASE + 2, duration: 1, lane: 0, categoryId: 'c1' }],
+    }))
+
+    expect(count).toBe(1)
+    expect(callNames(client)).toContain('replaceState')
+    expect(store.projects.value[0].startMonth).toBe(2)
+    expect(store.categories.value).toHaveLength(1)
+  })
+
+  it('吃得下舊版的純陣列匯入檔', async () => {
+    const { store } = await setup()
+    const count = await store.importJSON(asFile([{ id: 'x', name: 'Old', startMonth: 2, duration: 1, lane: 0 }]))
+
+    expect(count).toBe(1)
+    expect(store.categories.value).toEqual([])
+    expect(store.projects.value[0].startMonth).toBe(2)
+  })
+
+  it('格式錯誤時丟出錯誤,不碰後端', async () => {
+    const { client, store } = await setup()
+    await expect(store.importJSON(asFile({ nope: true }))).rejects.toThrow(/格式錯誤/)
+    expect(callNames(client)).not.toContain('replaceState')
+  })
+})
+
+describe('舊 localStorage 資料搬家', () => {
+  function stubStorage(initial = {}) {
+    const store = { ...initial }
+    vi.stubGlobal('localStorage', {
+      getItem: (k) => (k in store ? store[k] : null),
+      setItem: (k, v) => { store[k] = String(v) },
+      removeItem: (k) => { delete store[k] },
+    })
+    return store
+  }
+
+  const legacyPayload = {
+    categories: [{ id: 'c1', name: '官網', color: '#60a5fa' }],
+    projects: [{ id: 'x', name: '舊專案', startAbs: BASE + 4, duration: 2, lane: 0, categoryId: 'c1' }],
+  }
+
+  it('資料庫是空的且瀏覽器有舊資料時提議搬家', async () => {
+    stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { store } = await setup()
+
+    expect(store.legacy.value.projects).toHaveLength(1)
+    expect(store.legacy.value.categories).toHaveLength(1)
+  })
+
+  it('資料庫已經有資料就不提議,免得搬家覆蓋掉大家在用的資料', async () => {
+    stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { store } = await setup({ categories: [], projects: [{ id: 'live', name: '在用的' }] })
+
+    expect(store.legacy.value).toBe(null)
+  })
+
+  it('沒有舊資料時不提議', async () => {
+    stubStorage()
+    const { store } = await setup()
+    expect(store.legacy.value).toBe(null)
+  })
+
+  it('舊資料壞掉時不提議,也不會讓啟動失敗', async () => {
+    stubStorage({ 'roadmap.projects': '{壞掉的 JSON' })
+    const { store } = await setup()
+    expect(store.legacy.value).toBe(null)
+    expect(store.ready.value).toBe(true)
+  })
+
+  it('空的舊資料不提議', async () => {
+    stubStorage({ 'roadmap.projects': JSON.stringify({ categories: [], projects: [] }) })
+    const { store } = await setup()
+    expect(store.legacy.value).toBe(null)
+  })
+
+  it('搬家會整包寫進資料庫並回到畫面上', async () => {
+    stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { client, store } = await setup()
+
+    const count = await store.migrateLegacy()
+
+    expect(count).toBe(1)
+    expect(callNames(client)).toContain('replaceState')
+    expect(client.serverState.projects[0].name).toBe('舊專案')
+    expect(store.projects.value[0].startMonth).toBe(4)   // startAbs 換算回相對座標
+    expect(store.categories.value).toHaveLength(1)
+  })
+
+  it('搬完保留一份備份,原本那把 key 才清掉', async () => {
+    const store_ = stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { store } = await setup()
+
+    await store.migrateLegacy()
+
+    expect(store_['roadmap.projects']).toBeUndefined()
+    expect(JSON.parse(store_['roadmap.projects.migrated-backup']).projects).toHaveLength(1)
+  })
+
+  it('搬完不再提議', async () => {
+    stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { store } = await setup()
+
+    await store.migrateLegacy()
+    expect(store.legacy.value).toBe(null)
+
+    await store.reload()
+    expect(store.legacy.value).toBe(null)
+  })
+
+  it('搬家失敗時 localStorage 原封不動,資料不會兩邊都沒有', async () => {
+    const raw = stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { client, store } = await setup()
+    client.failOn('replaceState', '寫入失敗')
+
+    await expect(store.migrateLegacy()).rejects.toThrow(/寫入失敗/)
+    expect(raw['roadmap.projects']).toBeTruthy()
+    expect(store.legacy.value).not.toBe(null)
+  })
+
+  it('吃得下舊版的純陣列格式', async () => {
+    stubStorage({ 'roadmap.projects': JSON.stringify([{ id: 'x', name: '更舊的', startMonth: 3, duration: 1, lane: 0 }]) })
+    const { store } = await setup()
+
+    expect(store.legacy.value.projects).toHaveLength(1)
+    await store.migrateLegacy()
+    expect(store.projects.value[0].startMonth).toBe(3)
+  })
+
+  it('「先不要」只關掉提示,不碰任何資料', async () => {
+    const raw = stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { client, store } = await setup()
+
+    store.dismissLegacy()
+
+    expect(store.legacy.value).toBe(null)
+    expect(raw['roadmap.projects']).toBeTruthy()
+    expect(callNames(client)).not.toContain('replaceState')
   })
 })
