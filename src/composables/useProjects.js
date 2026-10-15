@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, shallowRef } from 'vue'
 import { api as defaultApi } from '../api.js'
 import { createSyncQueue } from './syncQueue.js'
 import { TIMELINE_START_YEAR, TIMELINE_START_MONTH } from '../constants.js'
@@ -58,12 +58,32 @@ function normalizeImport(data) {
   }
 }
 
+// 搬家前的舊資料住在 localStorage。搬完不刪,改名留一份備份。
+const LEGACY_KEY = 'roadmap.projects'
+const LEGACY_BACKUP_KEY = 'roadmap.projects.migrated-backup'
+
+function readLegacy() {
+  try {
+    const raw = localStorage.getItem(LEGACY_KEY)
+    if (!raw) return null
+    const payload = normalizeImport(JSON.parse(raw))
+    if (payload.projects.length === 0 && payload.categories.length === 0) return null
+    return payload
+  } catch {
+    // 沒有 localStorage(SSR / 測試)或內容壞掉,當作沒有舊資料
+    return null
+  }
+}
+
 export function useProjects(client = defaultApi) {
   const projects = ref([])
   const categories = ref([])
   // 第一次載入完成前,畫面上是空的 roadmap 而不是「沒有資料」
   const ready = ref(false)
   const syncError = ref(null)
+  // 偵測到、但還沒搬進資料庫的舊 localStorage 資料。
+  // 用 shallowRef:這是要原封送出去的惰性資料,包成深層 proxy 只會讓送出時多一層代理。
+  const legacy = shallowRef(null)
 
   function apply(state) {
     projects.value = (state?.projects ?? []).map(fromApi)
@@ -73,6 +93,10 @@ export function useProjects(client = defaultApi) {
   async function reload() {
     apply(await client.getState())
     ready.value = true
+    // 只有在資料庫是空的時候才提議搬家,否則搬家會覆蓋掉大家正在用的資料
+    legacy.value = projects.value.length === 0 && categories.value.length === 0
+      ? readLegacy()
+      : null
   }
 
   const queue = createSyncQueue({
@@ -194,10 +218,36 @@ export function useProjects(client = defaultApi) {
     return payload.projects.length
   }
 
+  // 一次性搬家:把這台瀏覽器裡的舊 roadmap 寫進資料庫
+  async function migrateLegacy() {
+    const payload = legacy.value
+    if (!payload) return 0
+
+    await queue.settled()
+    apply(await client.replaceState(payload))
+
+    // 搬完才動 localStorage,而且是改名不是刪除,搬錯還救得回來
+    try {
+      const raw = localStorage.getItem(LEGACY_KEY)
+      if (raw !== null) {
+        localStorage.setItem(LEGACY_BACKUP_KEY, raw)
+        localStorage.removeItem(LEGACY_KEY)
+      }
+    } catch { /* 存不進備份不該讓搬家失敗,資料已經在資料庫裡了 */ }
+
+    legacy.value = null
+    return payload.projects.length
+  }
+
+  function dismissLegacy() {
+    legacy.value = null
+  }
+
   return {
     projects, addProject, updateProject, removeProject,
     categories, addCategory, updateCategory, removeCategory, moveCategory,
     toArray, exportJSON, importJSON,
     ready, syncError, reload, loaded, flush: queue.flush, settled: queue.settled,
+    legacy, migrateLegacy, dismissLegacy,
   }
 }

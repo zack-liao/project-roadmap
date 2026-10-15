@@ -14,6 +14,7 @@ const {
   projects, addProject, updateProject, removeProject,
   categories, addCategory, updateCategory, removeCategory, moveCategory,
   exportJSON, importJSON, syncError,
+  legacy, migrateLegacy, dismissLegacy,
 } = useProjects()
 
 const modalOpen = ref(false)
@@ -108,6 +109,15 @@ function confirmRemove() {
   removeTarget.value = null
   toast('success', '已刪除')
 }
+async function handleMigrateLegacy() {
+  try {
+    const count = await migrateLegacy()
+    toast('success', `已搬移 ${count} 筆舊資料到資料庫`)
+  } catch (err) {
+    toast('error', `搬移失敗：${err.message}`)
+  }
+}
+
 function handleExport() {
   exportJSON()
   toast('success', '已匯出 JSON')
@@ -136,6 +146,17 @@ async function handleImport(file) {
         @import="handleImport"
       />
     </header>
+
+    <!-- 搬家前的資料還留在這台瀏覽器裡。只在資料庫是空的時候出現,搬完就不再出現。 -->
+    <div v-if="legacy" class="legacy-banner">
+      <span class="legacy-text">
+        偵測到這個瀏覽器裡還有舊的 roadmap（{{ legacy.projects.length }} 個 project、{{ legacy.categories.length }} 個類別），要搬進資料庫嗎？
+      </span>
+      <div class="legacy-actions">
+        <button class="legacy-primary" @click="handleMigrateLegacy">搬進資料庫</button>
+        <button class="legacy-ghost" @click="dismissLegacy">先不要</button>
+      </div>
+    </div>
 
     <div class="body">
       <ProjectList
@@ -235,6 +256,27 @@ async function handleImport(file) {
   color: var(--faint);
   letter-spacing: .03em;
 }
+.legacy-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--accent-soft);
+  border-bottom: 1px solid var(--border);
+}
+.legacy-text { font-size: 13px; }
+.legacy-actions { display: flex; gap: var(--sp-2); flex: none; }
+.legacy-banner button {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+.legacy-primary { background: var(--accent); color: #fff; border-color: transparent; }
+.legacy-ghost { background: transparent; color: var(--faint); }
 .body {
   flex: 1;
   min-height: 0;              /* 讓內部 pane 能各自捲動 */

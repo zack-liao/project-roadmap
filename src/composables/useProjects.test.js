@@ -325,3 +325,118 @@ describe('匯出 / 匯入', () => {
     expect(callNames(client)).not.toContain('replaceState')
   })
 })
+
+describe('舊 localStorage 資料搬家', () => {
+  function stubStorage(initial = {}) {
+    const store = { ...initial }
+    vi.stubGlobal('localStorage', {
+      getItem: (k) => (k in store ? store[k] : null),
+      setItem: (k, v) => { store[k] = String(v) },
+      removeItem: (k) => { delete store[k] },
+    })
+    return store
+  }
+
+  const legacyPayload = {
+    categories: [{ id: 'c1', name: '官網', color: '#60a5fa' }],
+    projects: [{ id: 'x', name: '舊專案', startAbs: BASE + 4, duration: 2, lane: 0, categoryId: 'c1' }],
+  }
+
+  it('資料庫是空的且瀏覽器有舊資料時提議搬家', async () => {
+    stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { store } = await setup()
+
+    expect(store.legacy.value.projects).toHaveLength(1)
+    expect(store.legacy.value.categories).toHaveLength(1)
+  })
+
+  it('資料庫已經有資料就不提議,免得搬家覆蓋掉大家在用的資料', async () => {
+    stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { store } = await setup({ categories: [], projects: [{ id: 'live', name: '在用的' }] })
+
+    expect(store.legacy.value).toBe(null)
+  })
+
+  it('沒有舊資料時不提議', async () => {
+    stubStorage()
+    const { store } = await setup()
+    expect(store.legacy.value).toBe(null)
+  })
+
+  it('舊資料壞掉時不提議,也不會讓啟動失敗', async () => {
+    stubStorage({ 'roadmap.projects': '{壞掉的 JSON' })
+    const { store } = await setup()
+    expect(store.legacy.value).toBe(null)
+    expect(store.ready.value).toBe(true)
+  })
+
+  it('空的舊資料不提議', async () => {
+    stubStorage({ 'roadmap.projects': JSON.stringify({ categories: [], projects: [] }) })
+    const { store } = await setup()
+    expect(store.legacy.value).toBe(null)
+  })
+
+  it('搬家會整包寫進資料庫並回到畫面上', async () => {
+    stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { client, store } = await setup()
+
+    const count = await store.migrateLegacy()
+
+    expect(count).toBe(1)
+    expect(callNames(client)).toContain('replaceState')
+    expect(client.serverState.projects[0].name).toBe('舊專案')
+    expect(store.projects.value[0].startMonth).toBe(4)   // startAbs 換算回相對座標
+    expect(store.categories.value).toHaveLength(1)
+  })
+
+  it('搬完保留一份備份,原本那把 key 才清掉', async () => {
+    const store_ = stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { store } = await setup()
+
+    await store.migrateLegacy()
+
+    expect(store_['roadmap.projects']).toBeUndefined()
+    expect(JSON.parse(store_['roadmap.projects.migrated-backup']).projects).toHaveLength(1)
+  })
+
+  it('搬完不再提議', async () => {
+    stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { store } = await setup()
+
+    await store.migrateLegacy()
+    expect(store.legacy.value).toBe(null)
+
+    await store.reload()
+    expect(store.legacy.value).toBe(null)
+  })
+
+  it('搬家失敗時 localStorage 原封不動,資料不會兩邊都沒有', async () => {
+    const raw = stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { client, store } = await setup()
+    client.failOn('replaceState', '寫入失敗')
+
+    await expect(store.migrateLegacy()).rejects.toThrow(/寫入失敗/)
+    expect(raw['roadmap.projects']).toBeTruthy()
+    expect(store.legacy.value).not.toBe(null)
+  })
+
+  it('吃得下舊版的純陣列格式', async () => {
+    stubStorage({ 'roadmap.projects': JSON.stringify([{ id: 'x', name: '更舊的', startMonth: 3, duration: 1, lane: 0 }]) })
+    const { store } = await setup()
+
+    expect(store.legacy.value.projects).toHaveLength(1)
+    await store.migrateLegacy()
+    expect(store.projects.value[0].startMonth).toBe(3)
+  })
+
+  it('「先不要」只關掉提示,不碰任何資料', async () => {
+    const raw = stubStorage({ 'roadmap.projects': JSON.stringify(legacyPayload) })
+    const { client, store } = await setup()
+
+    store.dismissLegacy()
+
+    expect(store.legacy.value).toBe(null)
+    expect(raw['roadmap.projects']).toBeTruthy()
+    expect(callNames(client)).not.toContain('replaceState')
+  })
+})
