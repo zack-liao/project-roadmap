@@ -28,6 +28,12 @@ describe('buildProjectCreate', () => {
     expect(columns.category_id).toBe('c1')
   })
 
+  it('duration 收四分之一月的小數 —— 時間軸本來就是這個粒度', () => {
+    for (const duration of [0.25, 2.5, 2.25, 2.75]) {
+      expect(buildProjectCreate({ name: 'A', duration }, id).columns.duration).toBe(duration)
+    }
+  })
+
   it('未知欄位忽略而不是報錯', () => {
     expect(buildProjectCreate({ nope: 1 }, id).columns).not.toHaveProperty('nope')
   })
@@ -35,7 +41,8 @@ describe('buildProjectCreate', () => {
   it.each([
     ['name 不是字串', { name: 1 }],
     ['duration 為 0', { duration: 0 }],
-    ['duration 不是整數', { duration: 1.5 }],
+    ['duration 是負數', { duration: -1 }],
+    ['duration 不是數字', { duration: '2.5' }],
     ['startAbs 是字串', { startAbs: '2026-01' }],
     ['startAbs 是 NaN', { startAbs: NaN }],
     ['lane 不是整數', { lane: 1.2 }],

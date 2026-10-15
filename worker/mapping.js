@@ -13,8 +13,13 @@ function asNullableNumber(key, v) {
   return v
 }
 
-function asPositiveInt(key, v) {
-  if (!Number.isInteger(v) || v < 1) throw badRequest(`${key} 必須是 >= 1 的整數`)
+// duration 不是整數:時間軸的粒度是四分之一個月(constants.js 的 SNAP),
+// 所以 2.5、2.25 這種長度是正常值。這裡只要求「正的有限數」,
+// 最小長度屬於畫面行為,交給前端的 MIN_DURATION 管。
+function asPositiveNumber(key, v) {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
+    throw badRequest(`${key} 必須是大於 0 的數字`)
+  }
   return v
 }
 
@@ -44,7 +49,7 @@ const PROJECT_FIELDS = {
   owner: { column: 'owner', parse: asString, fallback: '' },
   stakeholder: { column: 'stakeholder', parse: asString, fallback: '' },
   startAbs: { column: 'start_abs', parse: asNullableNumber, fallback: null },
-  duration: { column: 'duration', parse: asPositiveInt, fallback: 1 },
+  duration: { column: 'duration', parse: asPositiveNumber, fallback: 1 },
   lane: { column: 'lane', parse: asNullableInt, fallback: null },
   categoryId: { column: 'category_id', parse: asNullableId, fallback: null },
   imageKey: { column: 'image_key', parse: asNullableImageKey, fallback: null },

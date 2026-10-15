@@ -354,3 +354,66 @@ describe('封面圖', () => {
     expect(images.keys()).toEqual([kept])
   })
 })
+
+
+describe('匯入真實的匯出檔', () => {
+  // 取自實際的 roadmap 匯出檔:duration 是四分之一月的小數、
+  // 有未排程(startAbs / lane 為 null)的專案、也有沒有分類的專案
+  const EXPORTED = {
+    categories: [
+      { id: 'e6b9aba1-e264-4ba9-bf5f-898c2b5ec422', name: '金流', color: '#60a5fa' },
+      { id: '8afccec7-288b-4533-9b87-24c1c8ed89e6', name: '官網', color: '#facc15' },
+    ],
+    projects: [
+      {
+        categoryId: '8afccec7-288b-4533-9b87-24c1c8ed89e6',
+        id: 'a0cd7d93-49bb-4e1c-96ff-a53059a588dd',
+        name: '設計 - 官網', summary: '', owner: '', stakeholder: '',
+        duration: 2.5, lane: 1, startAbs: 24322,
+      },
+      {
+        categoryId: null,
+        id: '8c6589ba-f3e6-4519-9b65-f0a8f2e69543',
+        name: '金流統計 P4 銷售通路', summary: '', owner: '', stakeholder: '',
+        duration: 1, lane: null, startAbs: null,
+      },
+      {
+        categoryId: 'e6b9aba1-e264-4ba9-bf5f-898c2b5ec422',
+        id: 'db0cc104-5723-4c99-8659-2902e918c70a',
+        name: '設計 - 購物與課程平台整合', summary: '', owner: '', stakeholder: '',
+        duration: 2.25, lane: 1, startAbs: 24320,
+      },
+    ],
+  }
+
+  it('匯入成功', async () => {
+    const res = await call('PUT', '/api/state', EXPORTED)
+    expect(res.status).toBe(200)
+  })
+
+  it('小數的 duration 原值存進去又原值讀回來,沒有被截成整數', async () => {
+    await call('PUT', '/api/state', EXPORTED)
+    const after = await state()
+
+    const byName = Object.fromEntries(after.projects.map((p) => [p.name, p]))
+    expect(byName['設計 - 官網'].duration).toBe(2.5)
+    expect(byName['設計 - 購物與課程平台整合'].duration).toBe(2.25)
+    expect(byName['金流統計 P4 銷售通路'].duration).toBe(1)
+  })
+
+  it('未排程的專案維持未排程', async () => {
+    await call('PUT', '/api/state', EXPORTED)
+    const p = (await state()).projects.find((x) => x.name === '金流統計 P4 銷售通路')
+    expect(p.startAbs).toBe(null)
+    expect(p.lane).toBe(null)
+    expect(p.categoryId).toBe(null)
+  })
+
+  it('分類與歸屬都保留', async () => {
+    await call('PUT', '/api/state', EXPORTED)
+    const after = await state()
+    expect(after.categories.map((c) => c.name)).toEqual(['金流', '官網'])
+    expect(after.projects.find((p) => p.name === '設計 - 官網').categoryId)
+      .toBe('8afccec7-288b-4533-9b87-24c1c8ed89e6')
+  })
+})
