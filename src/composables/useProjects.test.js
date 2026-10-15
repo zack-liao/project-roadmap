@@ -84,7 +84,7 @@ const lastCall = (client, name) => [...client.calls].reverse().find((c) => c.nam
 async function setup(initial) {
   const client = createFakeClient(initial)
   const store = useProjects(client)
-  await store.loaded
+  await store.start()
   return { client, store }
 }
 
@@ -113,7 +113,7 @@ describe('初次載入', () => {
     const client = createFakeClient()
     client.failOn('getState', '連不上')
     const store = useProjects(client)
-    await store.loaded
+    await store.start()
     expect(store.syncError.value).toMatch(/連不上/)
     expect(store.projects.value).toEqual([])
   })

@@ -16,13 +16,13 @@ export async function getState(db) {
   }
 }
 
-export async function createProject(db, { id, columns }) {
-  const cols = ['id', ...Object.keys(columns)]
+export async function createProject(db, { id, columns }, userId) {
+  const cols = ['id', ...Object.keys(columns), 'created_by']
   const row = await db
     .prepare(
       `INSERT INTO projects (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')}) RETURNING *`,
     )
-    .bind(id, ...Object.values(columns))
+    .bind(id, ...Object.values(columns), userId)
     .first()
   return rowToProject(row)
 }
@@ -42,8 +42,8 @@ export async function deleteProject(db, id) {
   return meta.changes > 0
 }
 
-export async function createCategory(db, { id, columns }) {
-  const cols = ['id', ...Object.keys(columns)]
+export async function createCategory(db, { id, columns }, userId) {
+  const cols = ['id', ...Object.keys(columns), 'created_by']
   // position 接在現有最大值之後，新分類一律排到最下面
   const row = await db
     .prepare(
@@ -51,7 +51,7 @@ export async function createCategory(db, { id, columns }) {
        VALUES (${cols.map(() => '?').join(', ')}, (SELECT COALESCE(MAX(position) + 1, 0) FROM categories))
        RETURNING *`,
     )
-    .bind(id, ...Object.values(columns))
+    .bind(id, ...Object.values(columns), userId)
     .first()
   return rowToCategory(row)
 }
@@ -79,27 +79,27 @@ export async function reorderCategories(db, ids) {
 }
 
 // 匯入：整包覆寫。batch 在單一交易內執行，中途失敗不會留下半套資料。
-export async function replaceState(db, { categories, projects }) {
+export async function replaceState(db, { categories, projects }, userId) {
   const statements = [
     db.prepare('DELETE FROM projects'),
     db.prepare('DELETE FROM categories'),
   ]
 
   categories.forEach(({ id, columns }, i) => {
-    const cols = ['id', ...Object.keys(columns), 'position']
+    const cols = ['id', ...Object.keys(columns), 'position', 'created_by']
     statements.push(
       db
         .prepare(`INSERT INTO categories (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
-        .bind(id, ...Object.values(columns), i),
+        .bind(id, ...Object.values(columns), i, userId),
     )
   })
 
   for (const { id, columns } of projects) {
-    const cols = ['id', ...Object.keys(columns)]
+    const cols = ['id', ...Object.keys(columns), 'created_by']
     statements.push(
       db
         .prepare(`INSERT INTO projects (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
-        .bind(id, ...Object.values(columns)),
+        .bind(id, ...Object.values(columns), userId),
     )
   }
 

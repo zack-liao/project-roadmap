@@ -1,6 +1,8 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useProjects } from './composables/useProjects.js'
+import { useAuth } from './composables/useAuth.js'
+import { createApiClient } from './api.js'
 import ProjectModal from './components/ProjectModal.vue'
 import Timeline from './components/Timeline.vue'
 import ProjectList from './components/ProjectList.vue'
@@ -10,12 +12,47 @@ import ConfirmDialog from './components/ConfirmDialog.vue'
 import CategoryModal from './components/CategoryModal.vue'
 import ToastStack from './components/ToastStack.vue'
 
+// Client ID 由 vite.config 的 define 在組建時填入,沒有它就無法登入
+const auth = useAuth(__GOOGLE_CLIENT_ID__)
+
+const api = createApiClient({
+  getToken: auth.getToken,
+  // 401 = 通行證過期或無效,不是單一筆寫入失敗,要請使用者重新登入
+  onUnauthorized: (message) => {
+    auth.signOut(message)
+    store.reset()
+  },
+})
+
+const store = useProjects(api)
 const {
   projects, addProject, updateProject, removeProject,
   categories, addCategory, updateCategory, removeCategory, moveCategory,
   exportJSON, importJSON, syncError,
   legacy, migrateLegacy, dismissLegacy,
-} = useProjects()
+} = store
+
+const signInEl = ref(null)
+
+// 登入後才去讀資料;登出就把畫面清掉
+watch(auth.signedIn, (yes) => {
+  if (yes) store.start()
+  else store.reset()
+}, { immediate: true })
+
+// 登出後登入畫面是重新建立的,按鈕要再畫一次。
+// 首次載入交給 onMounted,這裡刻意不用 immediate,免得同一次載入掛兩遍。
+watch(auth.signedIn, (yes) => {
+  if (!yes) nextTick(() => auth.mountButton(signInEl.value))
+})
+
+onMounted(() => {
+  if (!auth.signedIn.value) auth.mountButton(signInEl.value)
+})
+
+watch(auth.authError, (message) => {
+  if (message) toast('error', message)
+})
 
 const modalOpen = ref(false)
 const editing = ref(null)
@@ -133,18 +170,42 @@ async function handleImport(file) {
 </script>
 
 <template>
-  <div class="app">
+  <div v-if="!auth.signedIn.value" class="signin">
+    <div class="signin-card">
+      <span class="mark" aria-hidden="true" />
+      <h1>Roadmap</h1>
+      <p class="signin-hint">請用 @hexschool.com 的公司帳號登入</p>
+      <!-- GIS 的按鈕由 renderButton 畫進這個容器 -->
+      <div ref="signInEl" class="signin-button" />
+      <p v-if="auth.authError.value" class="signin-error">{{ auth.authError.value }}</p>
+    </div>
+  </div>
+
+  <div v-else class="app">
     <header class="topbar">
       <div class="brand">
         <span class="mark" aria-hidden="true" />
         <h1>Roadmap</h1>
         <span class="tally">{{ projects.length }} projects</span>
       </div>
-      <Toolbar
-        @add="openAdd"
-        @export="handleExport"
-        @import="handleImport"
-      />
+      <div class="topbar-right">
+        <Toolbar
+          @add="openAdd"
+          @export="handleExport"
+          @import="handleImport"
+        />
+        <div class="account">
+          <img
+            v-if="auth.user.value?.picture"
+            class="avatar"
+            :src="auth.user.value.picture"
+            :alt="auth.user.value.name"
+            referrerpolicy="no-referrer"
+          />
+          <span class="account-name" :title="auth.user.value?.email">{{ auth.user.value?.name }}</span>
+          <button class="signout" @click="auth.signOut()">登出</button>
+        </div>
+      </div>
     </header>
 
     <!-- 搬家前的資料還留在這台瀏覽器裡。只在資料庫是空的時候出現,搬完就不再出現。 -->
@@ -256,6 +317,58 @@ async function handleImport(file) {
   color: var(--faint);
   letter-spacing: .03em;
 }
+.signin {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-5);
+}
+.signin-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-6, 32px) var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+}
+.signin-card h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+}
+.signin-hint { margin: 0; font-size: 13px; color: var(--faint); }
+.signin-button { min-height: 40px; }
+.signin-error { margin: 0; font-size: 12px; color: var(--danger, #e5484d); max-width: 280px; text-align: center; }
+
+.topbar-right { display: flex; align-items: center; gap: var(--sp-4); }
+.account { display: flex; align-items: center; gap: var(--sp-2); }
+.avatar {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+.account-name {
+  font-size: 12px;
+  color: var(--faint);
+  max-width: 140px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.signout {
+  padding: var(--sp-1, 4px) var(--sp-2);
+  font-size: 12px;
+  color: var(--faint);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.signout:hover { color: var(--text); }
+
 .legacy-banner {
   flex: none;
   display: flex;

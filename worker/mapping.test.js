@@ -60,6 +60,10 @@ describe('buildProjectPatch', () => {
 })
 
 describe('category 對應', () => {
+  it('舊資料沒有 created_by 時回 null 而不是 undefined', () => {
+    expect(rowToCategory({ id: 'c1', name: '平台', color: '#f00' }).createdBy).toBe(null)
+  })
+
   it('建立時補預設顏色', () => {
     expect(buildCategoryCreate({ name: '平台' }, id).columns).toEqual({ name: '平台', color: '#60a5fa' })
   })
@@ -69,8 +73,8 @@ describe('category 對應', () => {
   })
 
   it('rowToCategory 不外露 position', () => {
-    expect(rowToCategory({ id: 'c1', name: '平台', color: '#f00', position: 3 })).toEqual({
-      id: 'c1', name: '平台', color: '#f00',
+    expect(rowToCategory({ id: 'c1', name: '平台', color: '#f00', position: 3, created_by: 'sub-1' })).toEqual({
+      id: 'c1', name: '平台', color: '#f00', createdBy: 'sub-1',
     })
   })
 })
@@ -80,10 +84,10 @@ describe('rowToProject', () => {
     expect(rowToProject({
       id: 'p1', name: '改版', summary: 's', owner: 'o', stakeholder: 'st',
       start_abs: 24318, duration: 2, lane: 0, category_id: 'c1',
-      created_at: 'x', updated_at: 'y',
+      created_by: 'sub-1', created_at: 'x', updated_at: 'y',
     })).toEqual({
       id: 'p1', name: '改版', summary: 's', owner: 'o', stakeholder: 'st',
-      startAbs: 24318, duration: 2, lane: 0, categoryId: 'c1',
+      startAbs: 24318, duration: 2, lane: 0, categoryId: 'c1', createdBy: 'sub-1',
     })
   })
 })

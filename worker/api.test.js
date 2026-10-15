@@ -4,6 +4,9 @@ import { createFakeD1 } from './test/fake-d1.js'
 
 let db
 
+// handleApi 收到的是已經通過驗證的使用者;驗證本身在 auth.test.js
+const USER = { id: 'google-sub-1', email: 'zack@hexschool.com', name: 'Zack', picture: '' }
+
 beforeEach(() => {
   db = createFakeD1()
 })
@@ -14,7 +17,7 @@ function call(method, path, body) {
     init.body = typeof body === 'string' ? body : JSON.stringify(body)
     init.headers = { 'content-type': 'application/json' }
   }
-  return handleApi(new Request(`https://example.com${path}`, init), db)
+  return handleApi(new Request(`https://example.com${path}`, init), db, USER)
 }
 
 async function state() {
@@ -120,10 +123,10 @@ describe('PUT /api/state', () => {
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({
-      categories: [{ id: 'c1', name: '平台', color: '#f00' }],
+      categories: [{ id: 'c1', name: '平台', color: '#f00', createdBy: USER.id }],
       projects: [{
         id: 'p1', name: '匯入的', summary: '', owner: '', stakeholder: '',
-        startAbs: 24318, duration: 2, lane: null, categoryId: 'c1',
+        startAbs: 24318, duration: 2, lane: null, categoryId: 'c1', createdBy: USER.id,
       }],
     })
   })
@@ -164,5 +167,40 @@ describe('錯誤處理', () => {
 
   it('未知路徑回 404', async () => {
     expect((await call('GET', '/api/nope')).status).toBe(404)
+  })
+})
+
+describe('資料出處', () => {
+  it('建立的專案記下是誰建的,用 token 的 sub 不是 email', async () => {
+    const created = await (await newProject({ name: '改版' })).json()
+    expect(created.createdBy).toBe('google-sub-1')
+  })
+
+  it('建立的分類也記下出處', async () => {
+    const created = await (await newCategory('平台')).json()
+    expect(created.createdBy).toBe('google-sub-1')
+  })
+
+  it('前端自己送 createdBy 會被忽略,出處只由 token 決定', async () => {
+    const created = await (await newProject({ name: '改版', createdBy: '冒充的' })).json()
+    expect(created.createdBy).toBe('google-sub-1')
+  })
+
+  it('大家看到同一份資料,不會因為出處不同被濾掉', async () => {
+    await newProject({ name: '我建的' })
+    // 換一個人建立
+    await handleApi(
+      new Request('https://example.com/api/projects', {
+        method: 'POST',
+        body: JSON.stringify({ name: '別人建的' }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      db,
+      { id: 'google-sub-2', email: 'other@hexschool.com' },
+    )
+
+    const after = await state()
+    expect(after.projects.map((p) => p.name)).toEqual(['我建的', '別人建的'])
+    expect(after.projects.map((p) => p.createdBy)).toEqual(['google-sub-1', 'google-sub-2'])
   })
 })

@@ -1,7 +1,7 @@
 // 測試用的 D1 替身：用 node:sqlite 的記憶體資料庫跑真正的 SQL，
 // 介面比照 D1（prepare / bind / first / all / run / batch），
 // 所以 repo.js 的 SQL 本身也會被測到，而不是只測到 mock 的回傳值。
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
@@ -9,7 +9,12 @@ import { createRequire } from 'node:module'
 // 繞過 Vite 的模組解析用 require 取得
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite')
 
-const MIGRATION = fileURLToPath(new URL('../../migrations/0001_init_schema.sql', import.meta.url))
+const MIGRATIONS_DIR = fileURLToPath(new URL('../../migrations/', import.meta.url))
+
+// 套用全部 migration 而不是只套第一個,之後新增的 migration 會自動納入測試
+function migrationFiles() {
+  return readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort()
+}
 
 class FakeStatement {
   constructor(db, sql, params = []) {
@@ -42,7 +47,7 @@ export function createFakeD1() {
   const db = new DatabaseSync(':memory:')
   // D1 預設開啟外鍵約束，SQLite 預設關閉，這裡補上才能測到 ON DELETE SET NULL
   db.exec('PRAGMA foreign_keys = ON')
-  db.exec(readFileSync(MIGRATION, 'utf8'))
+  for (const file of migrationFiles()) db.exec(readFileSync(MIGRATIONS_DIR + file, 'utf8'))
 
   return {
     prepare: (sql) => new FakeStatement(db, sql),

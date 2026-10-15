@@ -1,5 +1,4 @@
 import { ref, shallowRef } from 'vue'
-import { api as defaultApi } from '../api.js'
 import { createSyncQueue } from './syncQueue.js'
 import { TIMELINE_START_YEAR, TIMELINE_START_MONTH } from '../constants.js'
 
@@ -75,7 +74,9 @@ function readLegacy() {
   }
 }
 
-export function useProjects(client = defaultApi) {
+// client 由呼叫端提供(createApiClient 或測試用的替身),
+// 因為它需要帶上登入後才拿得到的通行證
+export function useProjects(client) {
   const projects = ref([])
   const categories = ref([])
   // 第一次載入完成前,畫面上是空的 roadmap 而不是「沒有資料」
@@ -109,9 +110,23 @@ export function useProjects(client = defaultApi) {
     },
   })
 
-  const loaded = reload().catch((err) => {
-    syncError.value = `讀取資料失敗:${err.message}`
-  })
+  // 登入之後才由上層啟動:沒有通行證就不該去打 /api,只會換來一串 401
+  async function start() {
+    try {
+      await reload()
+    } catch (err) {
+      syncError.value = `讀取資料失敗:${err.message}`
+    }
+  }
+
+  // 登出時把畫面清乾淨,不把上一個人的資料留在螢幕上
+  function reset() {
+    projects.value = []
+    categories.value = []
+    legacy.value = null
+    syncError.value = null
+    ready.value = false
+  }
 
   function addProject(fields) {
     const p = {
@@ -247,7 +262,7 @@ export function useProjects(client = defaultApi) {
     projects, addProject, updateProject, removeProject,
     categories, addCategory, updateCategory, removeCategory, moveCategory,
     toArray, exportJSON, importJSON,
-    ready, syncError, reload, loaded, flush: queue.flush, settled: queue.settled,
+    ready, syncError, reload, start, reset, flush: queue.flush, settled: queue.settled,
     legacy, migrateLegacy, dismissLegacy,
   }
 }

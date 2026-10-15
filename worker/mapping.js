@@ -99,12 +99,13 @@ export function rowToProject(row) {
     duration: row.duration,
     lane: row.lane,
     categoryId: row.category_id,
+    createdBy: row.created_by ?? null,
   }
 }
 
 // position 不外露：順序由回傳陣列本身表達，重排走 PUT /api/categories/order
 export function rowToCategory(row) {
-  return { id: row.id, name: row.name, color: row.color }
+  return { id: row.id, name: row.name, color: row.color, createdBy: row.created_by ?? null }
 }
 
 // 匯入用的整包 payload：{ categories, projects }
